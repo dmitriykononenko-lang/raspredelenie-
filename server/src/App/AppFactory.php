@@ -44,6 +44,15 @@ class AppFactory
             return $response;
         });
 
+        // Health check (для reverse-proxy / мониторинга)
+        $app->get('/health', function ($request, $response) {
+            $response->getBody()->write(json_encode([
+                'status'  => 'ok',
+                'service' => 'deal-distribution',
+            ]));
+            return $response->withHeader('Content-Type', 'application/json');
+        });
+
         // Routes
         $app->post('/api/distribute',                   DistributeController::class . ':distribute');
         $app->put('/api/settings',                      SettingsController::class   . ':save');

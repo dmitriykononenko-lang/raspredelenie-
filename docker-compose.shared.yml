@@ -1,0 +1,50 @@
+##############################################################################
+# KO: WORKS — Виджет «Распределение сделок»
+# Compose для ОБЩЕГО сервера (рядом с dubli).
+#
+# Принцип:
+#   • НЕ занимаем публичные порты 80/443 и не поднимаем публичный nginx;
+#   • приложение доступно только на 127.0.0.1:3001;
+#   • публичный трафик терминирует ХОСТОВЫЙ nginx и проксирует на 3001;
+#   • свой project name (-p raspredelenie) → уникальные имена контейнеров/томов,
+#     пересечений с dubli нет.
+#
+# Запуск:
+#   docker compose -p raspredelenie -f docker-compose.shared.yml up -d --build
+##############################################################################
+
+services:
+
+  # ── PHP-FPM приложение (Slim) ─────────────────────────────────────────────
+  app:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: ./server/.env
+    environment:
+      STORAGE_PATH: /storage
+    volumes:
+      - storage:/storage
+    networks:
+      - internal
+
+  # ── Внутренний nginx: HTTP-обёртка для PHP-FPM ────────────────────────────
+  #    Публикуется ТОЛЬКО на localhost:3001 — публичные 80/443 не трогаются.
+  web:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:80"
+    volumes:
+      - ./docker/nginx/internal.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - internal
+    depends_on:
+      - app
+
+volumes:
+  storage:
+
+networks:
+  internal:
