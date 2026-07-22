@@ -6,23 +6,17 @@
     "logo": "images/logo.png",
     "logo_medium": "images/logo_medium.png",
     "cover": "images/cover.jpg",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "interface_version": 1,
     "init_once": false,
     "conflict_mode": false,
     "locale": ["ru", "en"],
     "installation": false,
     "digital_pipeline": true,
-    "dp": [
-      {
-        "element": "lead",
-        "event": "status"
-      },
-      {
-        "element": "lead",
-        "event": "add"
-      }
-    ],
+    "dp": {
+      "webhook_url": "https://raspredelenie.koagency.ru/webhook/leads",
+      "action_multiple": false
+    },
     "settings": {
       "server_url": {
         "name": "server_url",
