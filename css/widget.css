@@ -15,7 +15,7 @@
     font-size: 16px;
     font-weight: 600;
     margin: 0 0 16px;
-    color: #1c1c1e;
+    color: #141414;
 }
 
 /* ── Sections ──────────────────────────────────────────────── */
@@ -82,8 +82,8 @@
 
 .dist-input:focus,
 .dist-select:focus {
-    border-color: #2b7de9;
-    box-shadow: 0 0 0 2px rgba(43,125,233,0.25);
+    border-color: #d22730;
+    box-shadow: 0 0 0 2px rgba(210,39,48,0.22);
 }
 
 .dist-select--inline {
@@ -109,12 +109,12 @@
 }
 
 .dist-btn--primary {
-    background: #2b7de9;
+    background: #d22730;
     color: #fff;
 }
 
 .dist-btn--primary:hover {
-    background: #1f66cf;
+    background: #b31f27;
 }
 
 .dist-btn--secondary {
@@ -317,8 +317,8 @@
 }
 
 .dist-tab--active {
-    color: #2b7de9;
-    border-bottom-color: #2b7de9;
+    color: #d22730;
+    border-bottom-color: #d22730;
 }
 
 /* ── Schedule cards ────────────────────────────────────────── */
@@ -450,7 +450,7 @@
 }
 
 .dist-log-td a {
-    color: #2b7de9;
+    color: #d22730;
     text-decoration: none;
 }
 
