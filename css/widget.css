@@ -1,0 +1,487 @@
+/* ============================================================
+   Deal Distribution Widget — Styles
+   ============================================================ */
+
+/* ── Base typography & layout ──────────────────────────────── */
+.dist-settings,
+.dist-dp-settings {
+    font-family: "Roboto", "Arial", sans-serif;
+    font-size: 13px;
+    color: #333;
+    padding: 16px 0;
+}
+
+.dist-settings__title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 16px;
+    color: #1c1c1e;
+}
+
+/* ── Sections ──────────────────────────────────────────────── */
+.dist-section {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.dist-section__title {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    color: #333;
+}
+
+/* ── Fields ────────────────────────────────────────────────── */
+.dist-field {
+    margin-bottom: 14px;
+}
+
+.dist-field:last-child {
+    margin-bottom: 0;
+}
+
+.dist-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: #666;
+    margin-bottom: 4px;
+}
+
+.dist-required {
+    color: #e84646;
+}
+
+.dist-hint {
+    display: block;
+    font-size: 11px;
+    color: #999;
+    margin-top: 4px;
+}
+
+/* ── Inputs ────────────────────────────────────────────────── */
+.dist-input,
+.dist-select {
+    display: block;
+    width: 100%;
+    max-width: 420px;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #333;
+    background: #fff;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.dist-input:focus,
+.dist-select:focus {
+    border-color: #4e90e5;
+    box-shadow: 0 0 0 2px rgba(78, 144, 229, 0.2);
+}
+
+.dist-select--inline {
+    display: inline-block;
+    width: auto;
+    min-width: 180px;
+}
+
+/* ── Buttons ───────────────────────────────────────────────── */
+.dist-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    padding: 0 14px;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+    white-space: nowrap;
+}
+
+.dist-btn--primary {
+    background: #4e90e5;
+    color: #fff;
+}
+
+.dist-btn--primary:hover {
+    background: #3a7bd5;
+}
+
+.dist-btn--secondary {
+    background: #f0f0f0;
+    color: #333;
+}
+
+.dist-btn--secondary:hover {
+    background: #e0e0e0;
+}
+
+.dist-btn--danger {
+    background: #fde8e8;
+    color: #c0392b;
+}
+
+.dist-btn--danger:hover {
+    background: #f9c9c9;
+}
+
+.dist-btn--sm {
+    height: 26px;
+    padding: 0 10px;
+    font-size: 12px;
+}
+
+/* ── Rules list ────────────────────────────────────────────── */
+.dist-rules-list {
+    margin-bottom: 12px;
+}
+
+.dist-rule-row {
+    border: 1px solid #dde3ec;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    background: #fafbfc;
+    overflow: hidden;
+}
+
+.dist-rule-row__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: #edf2f9;
+    border-bottom: 1px solid #dde3ec;
+}
+
+.dist-rule-row__title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #4e6490;
+}
+
+.dist-rule-row__body {
+    padding: 14px 12px;
+}
+
+/* ── Managers list ─────────────────────────────────────────── */
+.dist-managers-list {
+    margin-bottom: 8px;
+}
+
+.dist-manager-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.dist-manager-row .dist-select--inline {
+    flex: 1;
+    max-width: 320px;
+}
+
+/* ── DP settings panel ─────────────────────────────────────── */
+.dist-dp-settings {
+    padding: 12px;
+}
+
+.dist-dp-settings .dist-field {
+    margin-bottom: 12px;
+}
+
+/* ── Checkbox ──────────────────────────────────────────────── */
+.dist-label input[type="checkbox"] {
+    margin-right: 6px;
+    vertical-align: middle;
+    cursor: pointer;
+}
+
+/* ── Two-column row ────────────────────────────────────────── */
+.dist-row-2col {
+    display: flex;
+    gap: 16px;
+}
+
+.dist-row-2col .dist-field {
+    flex: 1;
+    min-width: 0;
+}
+
+/* ── Filters section ───────────────────────────────────────── */
+.dist-filters-section {
+    margin-top: 10px;
+    border-top: 1px dashed #dde3ec;
+    padding-top: 10px;
+}
+
+.dist-toggle-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 12px;
+    color: #4e6490;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.dist-toggle-btn:hover {
+    color: #2d4a7a;
+}
+
+.dist-toggle-icon {
+    display: inline-block;
+    margin-right: 4px;
+}
+
+.dist-filters-body {
+    margin-top: 10px;
+}
+
+/* ── Custom field conditions ───────────────────────────────── */
+.dist-cf-list {
+    margin-bottom: 6px;
+}
+
+.dist-cf-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+
+.dist-input--sm {
+    height: 28px;
+    padding: 0 8px;
+    font-size: 12px;
+    width: auto;
+}
+
+.dist-select--sm {
+    height: 28px;
+    padding: 0 6px;
+    font-size: 12px;
+    width: auto;
+}
+
+.dist-cf-row .js-cf-field-id {
+    width: 90px;
+}
+
+.dist-cf-row .js-cf-value {
+    flex: 1;
+    min-width: 100px;
+}
+
+/* ── Empty state ───────────────────────────────────────────── */
+.dist-empty {
+    text-align: center;
+    color: #aaa;
+    padding: 24px 0;
+    font-size: 13px;
+}
+
+/* ── Tab navigation ────────────────────────────────────────── */
+.dist-tabs {
+    display: flex;
+    gap: 2px;
+    border-bottom: 2px solid #dde3ec;
+    margin-bottom: 16px;
+}
+
+.dist-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #777;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.dist-tab:hover {
+    color: #333;
+}
+
+.dist-tab--active {
+    color: #4e90e5;
+    border-bottom-color: #4e90e5;
+}
+
+/* ── Schedule cards ────────────────────────────────────────── */
+.dist-schedules-list {
+    margin-bottom: 12px;
+}
+
+.dist-schedule-card {
+    border: 1px solid #dde3ec;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    background: #fafbfc;
+    overflow: hidden;
+}
+
+.dist-schedule-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: #edf2f9;
+    border-bottom: 1px solid #dde3ec;
+}
+
+.dist-schedule-card__name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #4e6490;
+}
+
+.dist-schedule-card__actions {
+    display: flex;
+    gap: 6px;
+}
+
+.dist-schedule-card__body {
+    padding: 14px 12px;
+}
+
+.dist-schedule-add-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-top: 8px;
+}
+
+/* ── Days grid ─────────────────────────────────────────────── */
+.dist-days-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.dist-day-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.dist-day-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    min-width: 52px;
+}
+
+.dist-day-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+    min-width: 22px;
+}
+
+.dist-day-slots {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.dist-day-slots--hidden {
+    display: none;
+}
+
+.dist-input-time {
+    height: 28px;
+    padding: 0 6px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 12px;
+    width: 80px;
+    box-sizing: border-box;
+}
+
+.dist-day-sep {
+    color: #aaa;
+    font-size: 12px;
+}
+
+/* ── Log table ─────────────────────────────────────────────── */
+.dist-log-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.dist-log-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.dist-log-th {
+    text-align: left;
+    padding: 6px 10px;
+    background: #f5f6fa;
+    border-bottom: 1px solid #dde3ec;
+    font-weight: 600;
+    color: #555;
+}
+
+.dist-log-td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #f0f0f0;
+    vertical-align: middle;
+    color: #333;
+}
+
+.dist-log-td a {
+    color: #4e90e5;
+    text-decoration: none;
+}
+
+.dist-log-td a:hover {
+    text-decoration: underline;
+}
+
+.dist-log-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.dist-log-body {
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+/* ── Badges ────────────────────────────────────────────────── */
+.dist-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.dist-badge--success {
+    background: #e3f5e9;
+    color: #27863a;
+}
+
+.dist-badge--muted {
+    background: #f0f0f0;
+    color: #888;
+}

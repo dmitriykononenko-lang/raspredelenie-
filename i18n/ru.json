@@ -1,0 +1,46 @@
+{
+  "widget": {
+    "name": "Распределение сделок",
+    "description": "Автоматически распределяет входящие сделки и сделки, перемещающиеся по этапам воронки, между менеджерами по настраиваемым правилам: round-robin, по загруженности, с учётом расписания и истории контакта.",
+    "short_description": "Автораспределение сделок между менеджерами"
+  },
+  "settings": {
+    "title": "Распределение сделок — Настройки",
+    "server_url_label": "URL сервера распределения",
+    "server_url_placeholder": "https://your-server.com",
+    "server_url_hint": "Адрес бэкенд-сервиса, обрабатывающего распределение сделок.",
+    "method_label": "Метод распределения",
+    "method_round_robin": "Round Robin (по очереди)",
+    "method_workload": "По загруженности",
+    "rules_title": "Правила распределения",
+    "rules_hint": "Каждое правило задаёт, на каком этапе воронки и каким менеджерам назначать сделки.",
+    "add_rule": "+ Добавить правило",
+    "add_manager": "+ Добавить менеджера",
+    "pipeline_label": "Воронка",
+    "pipeline_placeholder": "— выберите —",
+    "stage_label": "Этап",
+    "stage_any": "Любой",
+    "managers_label": "Ответственные менеджеры",
+    "check_history_label": "Учитывать историю контакта/компании",
+    "check_schedule_label": "Учитывать рабочее расписание менеджера",
+    "rule_title_prefix": "Правило"
+  },
+  "dp_settings": {
+    "managers_label": "Менеджеры для этого этапа",
+    "check_history_label": "Учитывать историю контакта/компании",
+    "check_schedule_label": "Учитывать рабочее расписание"
+  },
+  "notifications": {
+    "success_header": "Распределение сделок",
+    "error_header": "Ошибка распределения",
+    "info_header": "Распределение сделок",
+    "no_server_url": "URL сервера не настроен. Откройте настройки виджета.",
+    "assigned": "Сделка #{lead_id} назначена на: {manager_name}",
+    "distribute_error": "Ошибка распределения сделки #{lead_id}"
+  },
+  "errors": {
+    "no_pipeline": "Воронка не выбрана",
+    "no_managers": "Список менеджеров пуст",
+    "server_error": "Ошибка сервера: {message}"
+  }
+}

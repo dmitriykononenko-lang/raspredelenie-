@@ -1,0 +1,46 @@
+{
+  "widget": {
+    "name": "Deal Distribution",
+    "description": "Automatically distributes incoming deals and deals moving through pipeline stages among managers using configurable rules: round-robin, by workload, with schedule and contact history support.",
+    "short_description": "Auto-distribution of deals among managers"
+  },
+  "settings": {
+    "title": "Deal Distribution — Settings",
+    "server_url_label": "Distribution server URL",
+    "server_url_placeholder": "https://your-server.com",
+    "server_url_hint": "Address of the backend service that handles deal distribution.",
+    "method_label": "Distribution method",
+    "method_round_robin": "Round Robin (queue-based)",
+    "method_workload": "By workload",
+    "rules_title": "Distribution rules",
+    "rules_hint": "Each rule defines at which pipeline stage and to which managers deals should be assigned.",
+    "add_rule": "+ Add rule",
+    "add_manager": "+ Add manager",
+    "pipeline_label": "Pipeline",
+    "pipeline_placeholder": "— select —",
+    "stage_label": "Stage",
+    "stage_any": "Any",
+    "managers_label": "Responsible managers",
+    "check_history_label": "Consider contact/company history",
+    "check_schedule_label": "Consider manager work schedule",
+    "rule_title_prefix": "Rule"
+  },
+  "dp_settings": {
+    "managers_label": "Managers for this stage",
+    "check_history_label": "Consider contact/company history",
+    "check_schedule_label": "Consider work schedule"
+  },
+  "notifications": {
+    "success_header": "Deal Distribution",
+    "error_header": "Distribution Error",
+    "info_header": "Deal Distribution",
+    "no_server_url": "Server URL is not configured. Open widget settings.",
+    "assigned": "Deal #{lead_id} assigned to: {manager_name}",
+    "distribute_error": "Distribution error for deal #{lead_id}"
+  },
+  "errors": {
+    "no_pipeline": "Pipeline not selected",
+    "no_managers": "Manager list is empty",
+    "server_error": "Server error: {message}"
+  }
+}

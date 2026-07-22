@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+
+  # ── PHP тесты ───────────────────────────────────────────────────────────────
+  test:
+    name: PHPUnit Tests
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, zip, json
+          coverage: none
+
+      - name: Install dependencies
+        working-directory: server
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Run tests
+        working-directory: server
+        run: ./vendor/bin/phpunit --testdox
+
+  # ── Сборка виджета ZIP ──────────────────────────────────────────────────────
+  build:
+    name: Build Widget ZIP
+    runs-on: ubuntu-22.04
+    needs: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build widget
+        run: bash build.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: widget-zip
+          path: dist/*.zip
+          retention-days: 30
+
+  # ── Деплой на сервер (только при push в main) ────────────────────────────────
+  deploy:
+    name: Deploy to koagency.me
+    runs-on: ubuntu-22.04
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host:     ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key:      ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd /opt/deal-dist
+            git pull origin main
+            docker compose build --no-cache app
+            docker compose up -d
+            docker compose ps

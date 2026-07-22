@@ -1,0 +1,45 @@
+{
+  "widget": {
+    "name": "widget_name",
+    "description": "widget_description",
+    "short_description": "widget_short_description",
+    "logo": "images/logo.png",
+    "logo_medium": "images/logo_medium.png",
+    "cover": "images/cover.jpg",
+    "version": "1.0.0",
+    "lang": "ru",
+    "init_once": false,
+    "conflict_mode": false,
+    "digital_pipeline": true,
+    "dp": [
+      {
+        "element": "lead",
+        "event": "status"
+      },
+      {
+        "element": "lead",
+        "event": "add"
+      }
+    ],
+    "installation": false,
+    "langs": ["ru", "en"],
+    "settings": {
+      "server_url": {
+        "name": "server_url",
+        "title": "Server URL",
+        "type": "text",
+        "required": true
+      },
+      "distribution_method": {
+        "name": "distribution_method",
+        "title": "Distribution method",
+        "type": "select",
+        "required": true,
+        "values": [
+          {"id": "round_robin", "option": "Round Robin (Queue)"},
+          {"id": "workload", "option": "Workload based"}
+        ]
+      }
+    }
+  }
+}

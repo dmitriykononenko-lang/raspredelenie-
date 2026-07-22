@@ -1,0 +1,30 @@
+{
+    "name": "basa/deal-distribution-widget",
+    "description": "AmoCRM Deal Distribution Widget – backend service",
+    "type": "project",
+    "require": {
+        "php": ">=8.1",
+        "guzzlehttp/guzzle": "^7.8",
+        "monolog/monolog": "^3.5",
+        "vlucas/phpdotenv": "^5.6",
+        "slim/slim": "^4.12",
+        "slim/psr7": "^1.6",
+        "php-di/php-di": "^7.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "DealDist\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "DealDist\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "start": "php -S 0.0.0.0:8080 -t public public/index.php"
+    }
+}

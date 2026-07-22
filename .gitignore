@@ -1,0 +1,19 @@
+# PHP / Composer
+server/vendor/
+server/.env
+
+# SSL certificates (never commit private keys)
+docker/nginx/ssl/*.pem
+docker/nginx/ssl/*.crt
+docker/nginx/ssl/*.key
+
+# Storage runtime data
+storage/
+
+# Widget build artifacts
+dist/
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
