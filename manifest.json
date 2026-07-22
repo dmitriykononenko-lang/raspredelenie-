@@ -6,7 +6,7 @@
     "logo": "images/logo.png",
     "logo_medium": "images/logo_medium.png",
     "cover": "images/cover.jpg",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "interface_version": 1,
     "init_once": false,
     "conflict_mode": false,
@@ -41,5 +41,9 @@
         ]
       }
     }
-  }
+  },
+  "locations": [
+    "digital_pipeline",
+    "settings"
+  ]
 }
