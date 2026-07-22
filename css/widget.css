@@ -82,8 +82,8 @@
 
 .dist-input:focus,
 .dist-select:focus {
-    border-color: #4e90e5;
-    box-shadow: 0 0 0 2px rgba(78, 144, 229, 0.2);
+    border-color: #2b7de9;
+    box-shadow: 0 0 0 2px rgba(43,125,233,0.25);
 }
 
 .dist-select--inline {
@@ -109,12 +109,12 @@
 }
 
 .dist-btn--primary {
-    background: #4e90e5;
+    background: #2b7de9;
     color: #fff;
 }
 
 .dist-btn--primary:hover {
-    background: #3a7bd5;
+    background: #1f66cf;
 }
 
 .dist-btn--secondary {
@@ -317,8 +317,8 @@
 }
 
 .dist-tab--active {
-    color: #4e90e5;
-    border-bottom-color: #4e90e5;
+    color: #2b7de9;
+    border-bottom-color: #2b7de9;
 }
 
 /* ── Schedule cards ────────────────────────────────────────── */
@@ -450,7 +450,7 @@
 }
 
 .dist-log-td a {
-    color: #4e90e5;
+    color: #2b7de9;
     text-decoration: none;
 }
 
