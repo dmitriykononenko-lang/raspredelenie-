@@ -26,6 +26,10 @@ services:
       STORAGE_PATH: /storage
     volumes:
       - storage:/storage
+      # .env монтируем файлом: правки применяются после restart, без пересборки
+      # (php-fpm с clear_env=yes не пробрасывает env_file внутрь PHP — приложение
+      #  читает именно этот файл через Dotenv).
+      - ./server/.env:/app/.env:ro
     networks:
       - internal
 
