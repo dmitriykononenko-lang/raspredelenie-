@@ -4,7 +4,7 @@
 # Скрипт полной установки на чистый Ubuntu 22.04 LTS
 #
 # Использование (от root или через sudo):
-#   curl -sSL https://raw.githubusercontent.com/dmitriykononenko-lang/Basa/main/deploy.sh | bash
+#   curl -sSL https://raw.githubusercontent.com/dmitriykononenko-lang/raspredelenie-/claude/deal-distribution-widget-tzy3th/deploy.sh | bash
 #
 # Или вручную:
 #   chmod +x deploy.sh && sudo ./deploy.sh
@@ -12,10 +12,10 @@
 
 set -euo pipefail
 
-DOMAIN="dist.koagency.me"
-EMAIL="admin@koagency.me"          # email для Let's Encrypt уведомлений
-REPO="https://github.com/dmitriykononenko-lang/Basa.git"
-BRANCH="claude/amocrm-deal-distribution-widget-ceg7R"
+DOMAIN="koagency.ru"
+EMAIL="admin@koagency.ru"          # email для Let's Encrypt уведомлений
+REPO="https://github.com/dmitriykononenko-lang/raspredelenie-.git"
+BRANCH="claude/deal-distribution-widget-tzy3th"
 APP_DIR="/opt/deal-dist"
 STORAGE_DIR="/var/lib/deal-dist"
 
