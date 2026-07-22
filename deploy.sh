@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-DOMAIN="koagency.ru"
+DOMAIN="raspredelenie.koagency.ru"
 EMAIL="admin@koagency.ru"          # email для Let's Encrypt уведомлений
 REPO="https://github.com/dmitriykononenko-lang/raspredelenie-.git"
 BRANCH="claude/deal-distribution-widget-tzy3th"
