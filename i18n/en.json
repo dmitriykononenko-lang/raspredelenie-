@@ -4,6 +4,28 @@
     "description": "Automatically distributes incoming deals and deals moving through pipeline stages among managers using configurable rules: round-robin, by workload, with schedule and contact history support.",
     "short_description": "Auto-distribution of deals among managers"
   },
+  "advanced": {
+    "title": "Deal Distribution"
+  },
+  "common": {
+    "loading": "Loading…"
+  },
+  "nav": {
+    "templates": "Templates",
+    "worktime": "Working time",
+    "reports": "Reports"
+  },
+  "status": {
+    "online": "ONLINE",
+    "self_hint": "You are included in deal distribution",
+    "title": "Distribution statuses",
+    "desc": "Priority switch: if a manager is turned off, they receive no deals regardless of schedule and other settings.",
+    "col_manager": "Manager",
+    "col_status": "In distribution",
+    "no_users": "No managers found.",
+    "load_error": "Failed to load statuses. Check the server URL in settings.",
+    "save_error": "Failed to save status. Please try again."
+  },
   "settings": {
     "title": "Deal Distribution — Settings",
     "server_url_label": "Distribution server URL",

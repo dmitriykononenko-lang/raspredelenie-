@@ -6,7 +6,7 @@ define(['jquery', 'underscore'], function($, _) {
             system = self.system();
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.0.9';
+        var WIDGET_VERSION = '1.0.10';
 
         var DISTRIBUTION_METHODS = {
             ROUND_ROBIN: 'round_robin',
@@ -524,6 +524,207 @@ define(['jquery', 'underscore'], function($, _) {
 
             return true;
         };
+
+        // ═════════════════════════════════════════════════════════════════════
+        //   Advanced settings — полностраничный виджет (сайдбар + модули)
+        // ═════════════════════════════════════════════════════════════════════
+
+        function getUsers() {
+            var users = [];
+            try {
+                var mgr = (window.AMOCRM && AMOCRM.constant && AMOCRM.constant('managers')) || null;
+                if (mgr && typeof mgr === 'object') {
+                    _.each(mgr, function(u) {
+                        if (!u || u.id == null) return;
+                        users.push({
+                            id:    parseInt(u.id, 10),
+                            name:  u.option || u.name || ('#' + u.id),
+                            group: u.group_name || u.group || ''
+                        });
+                    });
+                }
+            } catch (e) {}
+            if (!users.length && window.AMOCRM && AMOCRM.data && AMOCRM.data.users) {
+                _.each(AMOCRM.data.users, function(u) {
+                    users.push({ id: parseInt(u.id, 10), name: u.name || ('#' + u.id), group: '' });
+                });
+            }
+            return users;
+        }
+
+        function currentUserId() {
+            try {
+                var u = AMOCRM.constant('user');
+                return (u && u.id) ? parseInt(u.id, 10) : null;
+            } catch (e) { return null; }
+        }
+
+        function initials(name) {
+            var parts = $.trim(name).split(/\s+/);
+            var s = (parts[0] || '').charAt(0) + (parts[1] || '').charAt(0);
+            return (s || '?').toUpperCase();
+        }
+
+        function avatarColor(id) {
+            var palette = ['#d22730', '#12915a', '#c47812', '#7b3fce', '#2b7de9', '#d34580', '#0f8a8a'];
+            return palette[Math.abs(parseInt(id, 10) || 0) % palette.length];
+        }
+
+        self.advancedSettings = function() {
+            var titleText = $.trim(self.i18n('advanced.title') || 'Распределение сделок');
+            var $title = $();
+            $('h1, h2, h3').each(function() {
+                if ($title.length) return;
+                if ($.trim($(this).text()) === titleText) $title = $(this);
+            });
+
+            var $mount;
+            if ($title.length) {
+                $mount = $('<div class="dist-adv"></div>');
+                $title.after($mount);
+            } else {
+                $mount = $('<div class="dist-adv dist-adv--wide"></div>');
+                var $area = $('.widget_advanced_settings, .list-pipelines__hidden').first();
+                ($area.length ? $area : $(document.body)).append($mount);
+            }
+            renderAdvancedPage($mount);
+            return true;
+        };
+
+        function renderAdvancedPage($mount) {
+            $mount.html([
+                '<div class="dist-page">',
+                '  <aside class="dist-side">',
+                '    <div class="dist-side__brand">',
+                '      <div class="dist-side__mk">',
+                '        <svg viewBox="0 0 24 24" fill="none" width="22" height="22">',
+                '          <path d="M6 12l11-6M6 12h11M6 12l11 6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
+                '          <circle cx="6" cy="12" r="2.4" fill="#fff"/>',
+                '          <circle cx="18" cy="6" r="1.9" fill="#e5484d"/><circle cx="18" cy="12" r="1.9" fill="#e5484d"/><circle cx="18" cy="18" r="1.9" fill="#e5484d"/>',
+                '        </svg>',
+                '      </div>',
+                '      <div><b>KO:AGENCY</b><span>РАСПРЕДЕЛЕНИЕ</span></div>',
+                '    </div>',
+                '    <div class="dist-online">',
+                '      <div class="dist-online__row">',
+                '        <span class="dist-online__lbl"><i class="dist-dot"></i>' + _.escape(self.i18n('status.online')) + '</span>',
+                '        <label class="dist-switch"><input type="checkbox" class="js-self-online"><span class="dist-switch__tr"></span></label>',
+                '      </div>',
+                '      <small>' + _.escape(self.i18n('status.self_hint')) + '</small>',
+                '    </div>',
+                '    <nav class="dist-nav">',
+                '      <button class="dist-nav__i dist-nav__i--on" data-p="status">' + _.escape(self.i18n('status.title')) + '</button>',
+                '      <button class="dist-nav__i" disabled>' + _.escape(self.i18n('nav.templates')) + ' <span class="dist-soon">скоро</span></button>',
+                '      <button class="dist-nav__i" disabled>' + _.escape(self.i18n('nav.worktime')) + ' <span class="dist-soon">скоро</span></button>',
+                '      <button class="dist-nav__i" disabled>' + _.escape(self.i18n('nav.reports')) + ' <span class="dist-soon">скоро</span></button>',
+                '    </nav>',
+                '    <div class="dist-side__foot">raspredelenie.koagency.ru</div>',
+                '  </aside>',
+                '  <main class="dist-main">',
+                '    <div class="dist-main__head">',
+                '      <h2>' + _.escape(self.i18n('status.title')) + '</h2>',
+                '      <p>' + _.escape(self.i18n('status.desc')) + '</p>',
+                '    </div>',
+                '    <div class="dist-card">',
+                '      <div class="js-status-body dist-status-body"><p class="dist-muted">' + _.escape(self.i18n('common.loading')) + '</p></div>',
+                '    </div>',
+                '  </main>',
+                '</div>'
+            ].join(''));
+
+            loadStatusModule($mount);
+            bindAdvancedEvents($mount);
+        }
+
+        function loadStatusModule($mount) {
+            var users = getUsers();
+            var $body = $mount.find('.js-status-body');
+
+            if (!users.length) {
+                $body.html('<p class="dist-muted">' + _.escape(self.i18n('status.no_users')) + '</p>');
+                return;
+            }
+
+            apiRequest('/api/status', null, 'GET')
+                .done(function(resp) {
+                    var statuses = (resp && resp.statuses) || {};
+                    renderStatusTable($body, users, statuses);
+                    syncSelfToggle($mount, statuses);
+                })
+                .fail(function() {
+                    // Показываем таблицу даже без бэкенда — все по умолчанию онлайн (opt-out).
+                    renderStatusTable($body, users, {});
+                    notify(self.i18n('status.load_error'), 'error');
+                });
+        }
+
+        function renderStatusTable($body, users, statuses) {
+            var groups = {};
+            _.each(users, function(u) {
+                var g = u.group || '—';
+                (groups[g] = groups[g] || []).push(u);
+            });
+
+            var html = ['<table class="dist-table"><thead><tr><th>' + _.escape(self.i18n('status.col_manager')) +
+                        '</th><th class="dist-ta-r">' + _.escape(self.i18n('status.col_status')) + '</th></tr></thead><tbody>'];
+
+            _.each(groups, function(list, group) {
+                if (group !== '—') {
+                    html.push('<tr class="dist-tr-group"><td colspan="2">' + _.escape(group) + '</td></tr>');
+                }
+                _.each(list, function(u) {
+                    var online = !Object.prototype.hasOwnProperty.call(statuses, String(u.id)) ||
+                                 !!(statuses[String(u.id)] && statuses[String(u.id)].online);
+                    html.push(
+                        '<tr>' +
+                        '<td><span class="dist-u"><span class="dist-av" style="background:' + avatarColor(u.id) + '">' +
+                        _.escape(initials(u.name)) + '</span>' + _.escape(u.name) + '</span></td>' +
+                        '<td class="dist-ta-r">' +
+                        '<label class="dist-switch"><input type="checkbox" class="js-mgr-online" data-uid="' + u.id + '"' +
+                        (online ? ' checked' : '') + '><span class="dist-switch__tr"></span></label>' +
+                        '</td></tr>'
+                    );
+                });
+            });
+
+            html.push('</tbody></table>');
+            $body.html(html.join(''));
+        }
+
+        function syncSelfToggle($mount, statuses) {
+            var uid = currentUserId();
+            if (uid == null) { $mount.find('.js-self-online').closest('.dist-online').hide(); return; }
+            var online = !Object.prototype.hasOwnProperty.call(statuses, String(uid)) ||
+                         !!(statuses[String(uid)] && statuses[String(uid)].online);
+            $mount.find('.js-self-online').prop('checked', online);
+        }
+
+        function setStatus(userId, online, $input) {
+            var uid = currentUserId();
+            apiRequest('/api/status/' + parseInt(userId, 10), { online: !!online, actor_id: uid }, 'PUT')
+                .fail(function() {
+                    if ($input) $input.prop('checked', !online); // откат
+                    notify(self.i18n('status.save_error'), 'error');
+                });
+        }
+
+        function bindAdvancedEvents($mount) {
+            // Неймспейс .distadv защищает от дублей при пересоздании (init_once:false).
+            $mount
+                .off('change.distadv')
+                .on('change.distadv', '.js-mgr-online', function() {
+                    var $i = $(this);
+                    setStatus($i.data('uid'), $i.prop('checked'), $i);
+                })
+                .on('change.distadv', '.js-self-online', function() {
+                    var $i  = $(this);
+                    var uid = currentUserId();
+                    if (uid == null) return;
+                    setStatus(uid, $i.prop('checked'), $i);
+                    // Синхронизируем строку менеджера в таблице, если он там есть.
+                    $mount.find('.js-mgr-online[data-uid="' + uid + '"]').prop('checked', $i.prop('checked'));
+                });
+        }
 
         // ─── Schedules tab ────────────────────────────────────────────────────
 

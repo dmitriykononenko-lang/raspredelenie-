@@ -6,7 +6,7 @@
     "logo": "images/logo.png",
     "logo_medium": "images/logo_medium.png",
     "cover": "images/cover.jpg",
-    "version": "1.0.9",
+    "version": "1.0.10",
     "interface_version": 1,
     "init_once": false,
     "conflict_mode": false,
@@ -40,8 +40,12 @@
   },
   "locations": [
     "digital_pipeline",
-    "settings"
+    "settings",
+    "advanced_settings"
   ],
+  "advanced": {
+    "title": "advanced.title"
+  },
   "dp": {
     "webhook_url": "https://raspredelenie.koagency.ru/webhook/leads",
     "action_multiple": false
