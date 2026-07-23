@@ -9,6 +9,7 @@ use DealDist\Distribution\DistributionLog;
 use DealDist\Distribution\DistributionService;
 use DealDist\Distribution\QueueStorage;
 use DealDist\Distribution\ScheduleChecker;
+use DealDist\Distribution\StatusStorage;
 use Monolog\Handler\NullHandler;
 use Monolog\Logger;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -22,6 +23,7 @@ class DistributionServiceTest extends TestCase
     private ApiClient&MockObject       $apiClient;
     private QueueStorage&MockObject    $queueStorage;
     private ScheduleChecker&MockObject $scheduleChecker;
+    private StatusStorage&MockObject   $statusStorage;
     private DistributionLog&MockObject $log;
     private DistributionService        $service;
 
@@ -30,7 +32,11 @@ class DistributionServiceTest extends TestCase
         $this->apiClient       = $this->createMock(ApiClient::class);
         $this->queueStorage    = $this->createMock(QueueStorage::class);
         $this->scheduleChecker = $this->createMock(ScheduleChecker::class);
+        $this->statusStorage   = $this->createMock(StatusStorage::class);
         $this->log             = $this->createMock(DistributionLog::class);
+
+        // По умолчанию все менеджеры онлайн (opt-out).
+        $this->statusStorage->method('isOnline')->willReturn(true);
 
         $logger = new Logger('test');
         $logger->pushHandler(new NullHandler());
@@ -39,6 +45,7 @@ class DistributionServiceTest extends TestCase
             $this->apiClient,
             $this->queueStorage,
             $this->scheduleChecker,
+            $this->statusStorage,
             $this->log,
             $logger,
         );
@@ -244,6 +251,52 @@ class DistributionServiceTest extends TestCase
         $this->assertNull($result);
     }
 
+    // ── Online status ─────────────────────────────────────────────────────────
+
+    public function testOfflineManagerExcluded(): void
+    {
+        $this->apiClient->method('getLead')->willReturn($this->leadData());
+
+        // 201 офлайн, 202 онлайн
+        $this->statusStorage = $this->createMock(StatusStorage::class);
+        $this->statusStorage->method('isOnline')->willReturnMap([
+            ['acc1', 201, false],
+            ['acc1', 202, true],
+        ]);
+        $this->rebuildService();
+
+        $this->queueStorage
+            ->expects($this->once())
+            ->method('getNextManager')
+            ->with('acc1', self::anything(), [202]) // 201 исключён как офлайн
+            ->willReturn(202);
+
+        $result = $this->service->distribute($this->payload(
+            rules: [$this->rule(managers: [201, 202])]
+        ));
+
+        $this->assertSame(202, $result['assigned_to_id']);
+    }
+
+    public function testReturnsNullWhenAllManagersOffline(): void
+    {
+        $this->apiClient->method('getLead')->willReturn($this->leadData());
+
+        $this->statusStorage = $this->createMock(StatusStorage::class);
+        $this->statusStorage->method('isOnline')->willReturn(false);
+        $this->rebuildService();
+
+        $this->log->expects($this->once())
+            ->method('record')
+            ->with('acc1', 100, self::anything(), self::anything(), null, 'round_robin', 'skipped_offline');
+
+        $result = $this->service->distribute($this->payload(
+            rules: [$this->rule(managers: [201, 202])]
+        ));
+
+        $this->assertNull($result);
+    }
+
     // ── Deal filters ──────────────────────────────────────────────────────────
 
     public function testDealFilterSkipsRuleWhenLeadDoesNotMatch(): void
@@ -331,6 +384,21 @@ class DistributionServiceTest extends TestCase
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private function rebuildService(): void
+    {
+        $logger = new Logger('test');
+        $logger->pushHandler(new NullHandler());
+
+        $this->service = new DistributionService(
+            $this->apiClient,
+            $this->queueStorage,
+            $this->scheduleChecker,
+            $this->statusStorage,
+            $this->log,
+            $logger,
+        );
+    }
 
     private function payload(
         string  $accountId  = 'acc1',

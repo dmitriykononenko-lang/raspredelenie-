@@ -25,6 +25,7 @@ class DistributionService
         private readonly ApiClient       $apiClient,
         private readonly QueueStorage    $queueStorage,
         private readonly ScheduleChecker $scheduleChecker,
+        private readonly StatusStorage   $statusStorage,
         private readonly DistributionLog $log,
         private readonly Logger          $logger,
     ) {}
@@ -92,11 +93,25 @@ class DistributionService
             }
         }
 
-        // ── 4. Filter by work schedule ────────────────────────────────────────
-        $availableManagers = $managerIds;
+        // ── 4. Online-status filter (приоритетно: офлайн не получает сделок) ───
+        $availableManagers = array_values(array_filter(
+            $managerIds,
+            fn(int $id) => $this->statusStorage->isOnline($accountId, $id)
+        ));
+
+        if (empty($availableManagers)) {
+            $this->logger->warning('All managers are offline — skipping', [
+                'lead_id'     => $leadId,
+                'manager_ids' => $managerIds,
+            ]);
+            $this->log->record($accountId, $leadId, $pipelineId, $stageId, null, $method, 'skipped_offline');
+            return null;
+        }
+
+        // ── 5. Filter by work schedule ────────────────────────────────────────
         if (!empty($rule['check_schedule'])) {
             $availableManagers = array_values(array_filter(
-                $managerIds,
+                $availableManagers,
                 fn(int $id) => $this->scheduleChecker->isAvailable($accountId, $id)
             ));
 
@@ -110,16 +125,16 @@ class DistributionService
             }
         }
 
-        // ── 5. Pick manager by strategy ───────────────────────────────────────
+        // ── 6. Pick manager by strategy ───────────────────────────────────────
         $chosenId = match ($method) {
             'workload' => $this->pickByWorkload($accountId, $availableManagers),
             default    => $this->pickRoundRobin($accountId, $rule, $availableManagers),
         };
 
-        // ── 6. Assign ─────────────────────────────────────────────────────────
+        // ── 7. Assign ─────────────────────────────────────────────────────────
         $this->apiClient->updateLeadResponsible($accountId, $leadId, $chosenId);
 
-        // ── 7. Log ────────────────────────────────────────────────────────────
+        // ── 8. Log ────────────────────────────────────────────────────────────
         $this->log->record($accountId, $leadId, $pipelineId, $stageId, $chosenId, $method, 'assigned');
 
         $this->logger->info('Deal distributed', [

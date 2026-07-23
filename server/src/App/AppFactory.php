@@ -12,6 +12,7 @@ use DealDist\Http\Controller\OAuthController;
 use DealDist\Http\Controller\QueueController;
 use DealDist\Http\Controller\ScheduleController;
 use DealDist\Http\Controller\SettingsController;
+use DealDist\Http\Controller\StatusController;
 use DealDist\Http\Controller\WebhookController;
 use DI\ContainerBuilder;
 use Monolog\Handler\StreamHandler;
@@ -64,6 +65,11 @@ class AppFactory
         $app->get('/api/schedules/{userId:[0-9]+}',     ScheduleController::class   . ':get');
         $app->put('/api/schedules/{userId:[0-9]+}',     ScheduleController::class   . ':save');
         $app->delete('/api/schedules/{userId:[0-9]+}',  ScheduleController::class   . ':delete');
+
+        // Online status (менеджер в распределении / вне)
+        $app->get('/api/status',                        StatusController::class     . ':listAll');
+        $app->get('/api/status/history',                StatusController::class     . ':history');
+        $app->put('/api/status/{userId:[0-9]+}',        StatusController::class     . ':set');
 
         // Queue management
         $app->get('/api/queue',                         QueueController::class      . ':listQueues');
