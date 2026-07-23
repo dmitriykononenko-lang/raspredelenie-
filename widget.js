@@ -6,6 +6,8 @@ define(['jquery', 'underscore'], function($, _) {
             system = self.system();
 
         // ─── Constants ────────────────────────────────────────────────────────
+        var WIDGET_VERSION = '1.0.9';
+
         var DISTRIBUTION_METHODS = {
             ROUND_ROBIN: 'round_robin',
             WORKLOAD:    'workload'
@@ -13,6 +15,7 @@ define(['jquery', 'underscore'], function($, _) {
 
         var DEFAULT_SETTINGS = {
             server_url:          '',
+            security_key:        '',
             distribution_method: DISTRIBUTION_METHODS.ROUND_ROBIN,
             rules:               []
         };
@@ -51,9 +54,14 @@ define(['jquery', 'underscore'], function($, _) {
                 dataType: 'json',
                 headers: {
                     'X-Account-Id':     system.account_id || '',
-                    'X-Widget-Version': '1.0.0'
+                    'X-Widget-Version': WIDGET_VERSION
                 }
             };
+            // Общий секрет виджет↔бэкенд (совпадает с WIDGET_SECRET в .env).
+            // Передаём заголовком, не в URL (см. AMOCRM-WIDGET-BILLING-LESSONS §2.4).
+            if (settings.security_key) {
+                ajaxOpts.headers['X-Security-Key'] = $.trim(settings.security_key);
+            }
             if (!isReadOnly) {
                 ajaxOpts.contentType = 'application/json';
                 ajaxOpts.data        = JSON.stringify(data || {});

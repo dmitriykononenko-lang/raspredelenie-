@@ -6,7 +6,7 @@
     "logo": "images/logo.png",
     "logo_medium": "images/logo_medium.png",
     "cover": "images/cover.jpg",
-    "version": "1.0.8",
+    "version": "1.0.9",
     "interface_version": 1,
     "init_once": false,
     "conflict_mode": false,
@@ -19,6 +19,12 @@
         "title": "Server URL",
         "type": "text",
         "required": true
+      },
+      "security_key": {
+        "name": "security_key",
+        "title": "Security key",
+        "type": "pass",
+        "required": false
       },
       "distribution_method": {
         "name": "distribution_method",

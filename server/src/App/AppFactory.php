@@ -38,6 +38,7 @@ class AppFactory
         $app->addErrorMiddleware(true, true, true);
         $app->add(new JsonMiddleware());
         $app->add(new CorsMiddleware());
+        $app->add(new AuthMiddleware());
 
         // OPTIONS preflight — must be declared before other routes
         $app->options('/{routes:.+}', function ($request, $response) {
