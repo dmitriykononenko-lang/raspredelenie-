@@ -48,6 +48,20 @@ class ApiClient
 
     public function loadTokens(string $accountId): ?array
     {
+        // Долгосрочный токен доступа из .env (§4.1): бэкенд работает без OAuth-
+        // установки. Значение задаётся ТОЛЬКО в .env на сервере, не в git.
+        // Если AMO_ACCOUNT_ID пуст — токен применяется к любому аккаунту
+        // (режим одного аккаунта), иначе только к совпавшему.
+        $longTerm  = trim((string) ($_ENV['AMO_LONG_TERM_TOKEN'] ?? ''));
+        $ltAccount = trim((string) ($_ENV['AMO_ACCOUNT_ID'] ?? ''));
+        if ($longTerm !== '' && ($ltAccount === '' || $ltAccount === (string) $accountId)) {
+            return [
+                'access_token' => $longTerm,
+                'base_domain'  => trim((string) ($_ENV['AMO_BASE_DOMAIN'] ?? 'amocrm.ru')),
+                'long_term'    => true,
+            ];
+        }
+
         $file = $this->storagePath . '/tokens/' . $accountId . '.json';
         if (!file_exists($file)) {
             return null;
@@ -89,7 +103,15 @@ class ApiClient
             $response = $this->http->request($method, $url, $options);
         } catch (\GuzzleHttp\Exception\ClientException $e) {
             if ($e->getResponse()->getStatusCode() === 401) {
-                // Token expired — refresh and retry once
+                // Долгосрочный токен обновить нельзя — даём понятную ошибку (§6.4).
+                if (!empty($tokens['long_term'])) {
+                    $this->logger->error('Долгосрочный токен отклонён (401)', [
+                        'account_id' => $accountId,
+                        'hint'       => 'Проверьте AMO_LONG_TERM_TOKEN / AMO_ACCOUNT_ID в .env',
+                    ]);
+                    throw new \RuntimeException('amoCRM 401: долгосрочный токен недействителен или не для этого аккаунта');
+                }
+                // OAuth-токен истёк — обновляем и повторяем один раз
                 $tokens = $this->refreshTokens($accountId, $tokens);
                 $options['headers']['Authorization'] = 'Bearer ' . $tokens['access_token'];
                 $response = $this->http->request($method, $url, $options);
