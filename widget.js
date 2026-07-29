@@ -6,7 +6,7 @@ define(['jquery', 'underscore'], function($, _) {
             system = self.system();
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.0.10';
+        var WIDGET_VERSION = '1.0.11';
 
         var DISTRIBUTION_METHODS = {
             ROUND_ROBIN: 'round_robin',

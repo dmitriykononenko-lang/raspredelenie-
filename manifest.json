@@ -6,12 +6,12 @@
     "logo": "images/logo.png",
     "logo_medium": "images/logo_medium.png",
     "cover": "images/cover.jpg",
-    "version": "1.0.10",
+    "version": "1.0.11",
     "interface_version": 1,
     "init_once": false,
     "conflict_mode": false,
     "locale": ["ru", "en"],
-    "installation": false,
+    "installation": true,
     "digital_pipeline": true,
     "settings": {
       "server_url": {
