@@ -8,12 +8,42 @@
     "title": "Deal Distribution"
   },
   "common": {
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "soon": "soon",
+    "edit": "Edit",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving…"
   },
   "nav": {
     "templates": "Templates",
     "worktime": "Working time",
     "reports": "Reports"
+  },
+  "templates": {
+    "title": "Distribution templates",
+    "desc": "Reusable setting bundles for Digital Pipeline and SalesBot. Storing settings in templates protects them from loss when a trigger is deleted.",
+    "add": "+ Add template",
+    "col_name": "Name",
+    "col_type": "Distribution type",
+    "col_managers": "Managers",
+    "empty": "No templates yet. Create the first one.",
+    "load_error": "Failed to load templates. Check the server URL.",
+    "save_error": "Failed to save. Please try again.",
+    "name_required": "Please enter a template name.",
+    "confirm_delete": "Delete template?",
+    "modal_new": "New template",
+    "modal_edit": "Edit template",
+    "f_name": "Name",
+    "f_type": "Distribution type",
+    "f_managers": "Managers",
+    "add_manager": "+ Add manager",
+    "f_history": "Consider contact history",
+    "f_schedule": "Working hours only",
+    "type_round_robin": "Round Robin",
+    "type_workload": "By workload",
+    "type_percent": "Percent"
   },
   "status": {
     "online": "ONLINE",

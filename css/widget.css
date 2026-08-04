@@ -582,3 +582,61 @@
     .dist-nav { display: flex; flex-wrap: wrap; }
     .dist-nav__i { width: auto; }
 }
+
+/* ============================================================
+   Шаблоны, модалка, состояния (advanced-страница)
+   ============================================================ */
+.dist-mono { font-family: 'Roboto Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.dist-ta-c { text-align: center; }
+
+.dist-main__head.dist-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+
+/* badge (тип шаблона) */
+.dist-table .dist-badge { background: #fdebec; color: #d22730; font-weight: 650; }
+
+/* иконки-действия в строке */
+.dist-row-actions { white-space: nowrap; }
+.dist-icon-btn {
+    width: 28px; height: 28px; border: 1px solid #e4e9f1; background: #fff; color: #586173;
+    border-radius: 7px; cursor: pointer; font-size: 15px; line-height: 1; margin-left: 6px; transition: .13s;
+}
+.dist-icon-btn:hover { border-color: #d22730; color: #d22730; }
+.dist-icon-btn--danger:hover { background: #fdebec; }
+
+/* чипы менеджеров */
+.dist-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 8px; }
+.dist-chip {
+    display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #d6dde8;
+    padding: 4px 9px 4px 4px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: #141414;
+}
+.dist-av--sm { width: 22px; height: 22px; font-size: 9.5px; }
+.dist-chip__pct { width: 46px; height: 22px; border: 1px solid #d6dde8; border-radius: 6px; font-size: 12px; text-align: right; padding: 0 4px; }
+.dist-chip__x { cursor: pointer; color: #98a1af; font-size: 15px; }
+.dist-chip__x:hover { color: #d22730; }
+
+/* сегмент-переключатель типа */
+.dist-seg { display: inline-flex; background: #eef1f4; border-radius: 9px; padding: 3px; gap: 3px; }
+.dist-seg__i {
+    border: none; background: none; font-family: inherit; font-size: 12.5px; font-weight: 600; color: #586173;
+    padding: 6px 14px; border-radius: 7px; cursor: pointer; transition: .13s;
+}
+.dist-seg__i--on { background: #fff; color: #d22730; box-shadow: 0 1px 3px rgba(20,28,46,.12); }
+
+.dist-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #141414; margin-top: 10px; cursor: pointer; }
+
+/* модалка */
+.dist-modal { position: fixed; inset: 0; background: rgba(14,18,27,.55); display: flex; align-items: center; justify-content: center; z-index: 10050; }
+.dist-modal__box { background: #fff; width: 520px; max-width: 94vw; max-height: 90vh; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 24px 60px rgba(14,18,27,.4); }
+.dist-modal__head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid #e6e9ee; font-size: 15px; }
+.dist-modal__x { border: none; background: none; font-size: 20px; color: #98a1af; cursor: pointer; }
+.dist-modal__x:hover { color: #d22730; }
+.dist-modal__body { padding: 18px; overflow-y: auto; }
+.dist-modal__body .dist-field { margin-bottom: 16px; }
+.dist-modal__foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; border-top: 1px solid #e6e9ee; background: #f5f6f8; }
+
+/* пустое / ошибка */
+.dist-empty-box { text-align: center; padding: 40px 20px; color: #98a1af; }
+.dist-empty-box--err { color: #d22730; }
+.dist-empty-ic { width: 40px; height: 40px; line-height: 40px; margin: 0 auto 10px; border-radius: 50%; background: #eef1f4; font-size: 20px; color: #98a1af; }
+.dist-empty-box--err .dist-empty-ic { background: #fdebec; color: #d22730; }
+.dist-empty-box p { font-size: 13px; }

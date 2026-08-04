@@ -6,7 +6,7 @@ define(['jquery', 'underscore'], function($, _) {
             system = self.system();
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.0.11';
+        var WIDGET_VERSION = '1.0.12';
 
         var DISTRIBUTION_METHODS = {
             ROUND_ROBIN: 'round_robin',
@@ -591,7 +591,22 @@ define(['jquery', 'underscore'], function($, _) {
             return true;
         };
 
+        var $advMount = null;              // корневой контейнер advanced-страницы
+        var tplCache  = {};                // id → шаблон (для редактирования)
+
+        function navItem(key, label, on) {
+            return '<button class="dist-nav__i' + (on ? ' dist-nav__i--on' : '') +
+                   '" data-p="' + key + '">' + _.escape(label) + '</button>';
+        }
+
+        function panelHead(title, desc, $btn) {
+            return '<div class="dist-main__head' + ($btn ? ' dist-head-row' : '') + '">' +
+                   '<div><h2>' + _.escape(title) + '</h2><p>' + _.escape(desc) + '</p></div>' +
+                   ($btn || '') + '</div>';
+        }
+
         function renderAdvancedPage($mount) {
+            $advMount = $mount;
             $mount.html([
                 '<div class="dist-page">',
                 '  <aside class="dist-side">',
@@ -613,38 +628,43 @@ define(['jquery', 'underscore'], function($, _) {
                 '      <small>' + _.escape(self.i18n('status.self_hint')) + '</small>',
                 '    </div>',
                 '    <nav class="dist-nav">',
-                '      <button class="dist-nav__i dist-nav__i--on" data-p="status">' + _.escape(self.i18n('status.title')) + '</button>',
-                '      <button class="dist-nav__i" disabled>' + _.escape(self.i18n('nav.templates')) + ' <span class="dist-soon">скоро</span></button>',
-                '      <button class="dist-nav__i" disabled>' + _.escape(self.i18n('nav.worktime')) + ' <span class="dist-soon">скоро</span></button>',
-                '      <button class="dist-nav__i" disabled>' + _.escape(self.i18n('nav.reports')) + ' <span class="dist-soon">скоро</span></button>',
+                       navItem('status',    self.i18n('status.title'),   true),
+                       navItem('templates', self.i18n('nav.templates'),  false),
+                '      <button class="dist-nav__i" disabled>' + _.escape(self.i18n('nav.worktime')) + ' <span class="dist-soon">' + _.escape(self.i18n('common.soon')) + '</span></button>',
+                '      <button class="dist-nav__i" disabled>' + _.escape(self.i18n('nav.reports')) + ' <span class="dist-soon">' + _.escape(self.i18n('common.soon')) + '</span></button>',
                 '    </nav>',
                 '    <div class="dist-side__foot">raspredelenie.koagency.ru</div>',
                 '  </aside>',
-                '  <main class="dist-main">',
-                '    <div class="dist-main__head">',
-                '      <h2>' + _.escape(self.i18n('status.title')) + '</h2>',
-                '      <p>' + _.escape(self.i18n('status.desc')) + '</p>',
-                '    </div>',
-                '    <div class="dist-card">',
-                '      <div class="js-status-body dist-status-body"><p class="dist-muted">' + _.escape(self.i18n('common.loading')) + '</p></div>',
-                '    </div>',
-                '  </main>',
+                '  <main class="dist-main"><div class="js-panel"></div></main>',
                 '</div>'
             ].join(''));
 
-            loadStatusModule($mount);
             bindAdvancedEvents($mount);
+            switchPanel($mount, 'status');
         }
 
-        function loadStatusModule($mount) {
-            var users = getUsers();
-            var $body = $mount.find('.js-status-body');
+        function switchPanel($mount, key) {
+            $mount.find('.dist-nav__i').removeClass('dist-nav__i--on');
+            $mount.find('.dist-nav__i[data-p="' + key + '"]').addClass('dist-nav__i--on');
+            var $panel = $mount.find('.js-panel');
+            if (key === 'templates') renderTemplatesPanel($mount, $panel);
+            else                     renderStatusPanel($mount, $panel);
+        }
 
+        // ── Панель: Статусы ─────────────────────────────────────────────────────
+        function renderStatusPanel($mount, $panel) {
+            $panel.html(
+                panelHead(self.i18n('status.title'), self.i18n('status.desc')) +
+                '<div class="dist-card"><div class="js-status-body dist-status-body"><p class="dist-muted">' +
+                _.escape(self.i18n('common.loading')) + '</p></div></div>'
+            );
+
+            var users = getUsers();
+            var $body = $panel.find('.js-status-body');
             if (!users.length) {
-                $body.html('<p class="dist-muted">' + _.escape(self.i18n('status.no_users')) + '</p>');
+                $body.html(emptyState(self.i18n('status.no_users')));
                 return;
             }
-
             apiRequest('/api/status', null, 'GET')
                 .done(function(resp) {
                     var statuses = (resp && resp.statuses) || {};
@@ -652,10 +672,172 @@ define(['jquery', 'underscore'], function($, _) {
                     syncSelfToggle($mount, statuses);
                 })
                 .fail(function() {
-                    // Показываем таблицу даже без бэкенда — все по умолчанию онлайн (opt-out).
                     renderStatusTable($body, users, {});
                     notify(self.i18n('status.load_error'), 'error');
                 });
+        }
+
+        // ── Панель: Шаблоны ─────────────────────────────────────────────────────
+        function tplTypeLabel(type) {
+            return self.i18n('templates.type_' + type) || type;
+        }
+
+        function renderTemplatesPanel($mount, $panel) {
+            var addBtn = '<button class="dist-btn dist-btn--primary js-tpl-add">' +
+                         _.escape(self.i18n('templates.add')) + '</button>';
+            $panel.html(
+                panelHead(self.i18n('templates.title'), self.i18n('templates.desc'), addBtn) +
+                '<div class="dist-card"><div class="js-tpl-body"><p class="dist-muted">' +
+                _.escape(self.i18n('common.loading')) + '</p></div></div>'
+            );
+            loadTemplates($panel);
+        }
+
+        function loadTemplates($panel) {
+            var $body = $panel.find('.js-tpl-body');
+            apiRequest('/api/templates', null, 'GET')
+                .done(function(resp) { renderTemplatesTable($body, (resp && resp.templates) || []); })
+                .fail(function() { $body.html(errorState(self.i18n('templates.load_error'))); });
+        }
+
+        function renderTemplatesTable($body, templates) {
+            tplCache = {};
+            if (!templates.length) {
+                $body.html(emptyState(self.i18n('templates.empty')));
+                return;
+            }
+            var html = ['<table class="dist-table"><thead><tr>' +
+                '<th>' + _.escape(self.i18n('templates.col_name')) + '</th>' +
+                '<th>' + _.escape(self.i18n('templates.col_type')) + '</th>' +
+                '<th class="dist-ta-c">' + _.escape(self.i18n('templates.col_managers')) + '</th>' +
+                '<th class="dist-ta-r"></th></tr></thead><tbody>'];
+
+            _.each(templates, function(t) {
+                tplCache[t.id] = t;
+                html.push(
+                    '<tr>' +
+                    '<td><b>' + _.escape(t.name) + '</b></td>' +
+                    '<td><span class="dist-badge">' + _.escape(tplTypeLabel(t.type)) + '</span></td>' +
+                    '<td class="dist-ta-c dist-mono">' + ((t.managers || []).length) + '</td>' +
+                    '<td class="dist-ta-r dist-row-actions">' +
+                    '<button class="dist-icon-btn js-tpl-edit" data-id="' + _.escape(t.id) + '" title="' + _.escape(self.i18n('common.edit')) + '">&#9998;</button>' +
+                    '<button class="dist-icon-btn dist-icon-btn--danger js-tpl-del" data-id="' + _.escape(t.id) + '" title="' + _.escape(self.i18n('common.delete')) + '">&#215;</button>' +
+                    '</td></tr>'
+                );
+            });
+            html.push('</tbody></table>');
+            $body.html(html.join(''));
+        }
+
+        // ── Модалка шаблона ─────────────────────────────────────────────────────
+        function openTemplateModal(tpl) {
+            var isEdit = !!tpl;
+            tpl = tpl || { name: '', type: 'round_robin', managers: [], check_history: false, check_schedule: false };
+            var users = getUsers();
+
+            var seg = _.map(['round_robin', 'workload', 'percent'], function(tp) {
+                return '<button type="button" class="dist-seg__i' + (tpl.type === tp ? ' dist-seg__i--on' : '') +
+                       '" data-type="' + tp + '">' + _.escape(tplTypeLabel(tp)) + '</button>';
+            }).join('');
+
+            var $modal = $(
+                '<div class="dist-modal">' +
+                '  <div class="dist-modal__box">' +
+                '    <div class="dist-modal__head"><b>' +
+                       _.escape(self.i18n(isEdit ? 'templates.modal_edit' : 'templates.modal_new')) +
+                '      </b><button class="dist-modal__x js-modal-close">&#215;</button></div>' +
+                '    <div class="dist-modal__body">' +
+                '      <div class="dist-field"><label class="dist-label">' + _.escape(self.i18n('templates.f_name')) +
+                         ' <span class="dist-required">*</span></label>' +
+                '        <input type="text" class="dist-input js-tpl-name" value="' + _.escape(tpl.name) + '" /></div>' +
+                '      <div class="dist-field"><label class="dist-label">' + _.escape(self.i18n('templates.f_type')) + '</label>' +
+                '        <div class="dist-seg js-tpl-seg">' + seg + '</div></div>' +
+                '      <div class="dist-field"><label class="dist-label">' + _.escape(self.i18n('templates.f_managers')) + '</label>' +
+                '        <div class="js-tpl-chips dist-chips"></div>' +
+                '        <select class="dist-select js-tpl-mgr-add"><option value="">' + _.escape(self.i18n('templates.add_manager')) + '</option>' +
+                           _.map(users, function(u) { return '<option value="' + u.id + '">' + _.escape(u.name) + '</option>'; }).join('') +
+                '        </select></div>' +
+                '      <label class="dist-check"><input type="checkbox" class="js-tpl-history"' + (tpl.check_history ? ' checked' : '') + '> ' +
+                         _.escape(self.i18n('templates.f_history')) + '</label>' +
+                '      <label class="dist-check"><input type="checkbox" class="js-tpl-schedule"' + (tpl.check_schedule ? ' checked' : '') + '> ' +
+                         _.escape(self.i18n('templates.f_schedule')) + '</label>' +
+                '    </div>' +
+                '    <div class="dist-modal__foot">' +
+                '      <button class="dist-btn dist-btn--secondary js-modal-close">' + _.escape(self.i18n('common.cancel')) + '</button>' +
+                '      <button class="dist-btn dist-btn--primary js-tpl-save" data-id="' + _.escape(tpl.id || '') + '">' +
+                         _.escape(self.i18n('common.save')) + '</button>' +
+                '    </div>' +
+                '  </div></div>'
+            );
+
+            $advMount.append($modal);
+            $modal.data('type', tpl.type);
+            var $chips = $modal.find('.js-tpl-chips');
+            _.each(tpl.managers || [], function(m) {
+                var u = _.find(users, function(x) { return String(x.id) === String(m.id); });
+                addChip($chips, m.id, u ? u.name : ('#' + m.id), m.percent, tpl.type === 'percent');
+            });
+        }
+
+        function addChip($chips, id, name, percent, showPercent) {
+            if ($chips.find('.dist-chip[data-uid="' + id + '"]').length) return;
+            var pct = showPercent
+                ? '<input type="number" class="dist-chip__pct js-chip-pct" min="0" max="100" value="' + (percent != null ? percent : 0) + '">%'
+                : '';
+            $chips.append(
+                '<span class="dist-chip" data-uid="' + id + '">' +
+                '<span class="dist-av dist-av--sm" style="background:' + avatarColor(id) + '">' + _.escape(initials(name)) + '</span>' +
+                _.escape(name) + pct +
+                '<span class="dist-chip__x js-chip-x">&#215;</span></span>'
+            );
+        }
+
+        function saveTemplate($modal) {
+            var id   = $modal.find('.js-tpl-save').data('id');
+            var type = $modal.data('type') || 'round_robin';
+            var name = $.trim($modal.find('.js-tpl-name').val());
+            if (!name) { notify(self.i18n('templates.name_required'), 'error'); return; }
+
+            var managers = [];
+            $modal.find('.dist-chip').each(function() {
+                var entry = { id: parseInt($(this).data('uid'), 10) };
+                if (type === 'percent') entry.percent = parseInt($(this).find('.js-chip-pct').val(), 10) || 0;
+                managers.push(entry);
+            });
+
+            var payload = {
+                name:           name,
+                type:           type,
+                managers:       managers,
+                check_history:  $modal.find('.js-tpl-history').prop('checked'),
+                check_schedule: $modal.find('.js-tpl-schedule').prop('checked')
+            };
+
+            var req = id
+                ? apiRequest('/api/templates/' + id, payload, 'PUT')
+                : apiRequest('/api/templates', payload, 'POST');
+
+            $modal.find('.js-tpl-save').prop('disabled', true).text(self.i18n('common.saving'));
+            req.done(function() {
+                $modal.remove();
+                loadTemplates($advMount.find('.js-panel'));
+            }).fail(function() {
+                $modal.find('.js-tpl-save').prop('disabled', false).text(self.i18n('common.save'));
+                notify(self.i18n('templates.save_error'), 'error');
+            });
+        }
+
+        function deleteTemplate(id) {
+            apiRequest('/api/templates/' + id, null, 'DELETE')
+                .done(function() { loadTemplates($advMount.find('.js-panel')); })
+                .fail(function() { notify(self.i18n('templates.save_error'), 'error'); });
+        }
+
+        function emptyState(text) {
+            return '<div class="dist-empty-box"><div class="dist-empty-ic">&#9711;</div><p>' + _.escape(text) + '</p></div>';
+        }
+        function errorState(text) {
+            return '<div class="dist-empty-box dist-empty-box--err"><div class="dist-empty-ic">!</div><p>' + _.escape(text) + '</p></div>';
         }
 
         function renderStatusTable($body, users, statuses) {
@@ -711,7 +893,12 @@ define(['jquery', 'underscore'], function($, _) {
         function bindAdvancedEvents($mount) {
             // Неймспейс .distadv защищает от дублей при пересоздании (init_once:false).
             $mount
-                .off('change.distadv')
+                .off('.distadv')
+                // ── навигация по сайдбару ──
+                .on('click.distadv', '.dist-nav__i[data-p]', function() {
+                    switchPanel($mount, $(this).data('p'));
+                })
+                // ── статусы ──
                 .on('change.distadv', '.js-mgr-online', function() {
                     var $i = $(this);
                     setStatus($i.data('uid'), $i.prop('checked'), $i);
@@ -721,9 +908,45 @@ define(['jquery', 'underscore'], function($, _) {
                     var uid = currentUserId();
                     if (uid == null) return;
                     setStatus(uid, $i.prop('checked'), $i);
-                    // Синхронизируем строку менеджера в таблице, если он там есть.
                     $mount.find('.js-mgr-online[data-uid="' + uid + '"]').prop('checked', $i.prop('checked'));
-                });
+                })
+                // ── шаблоны: список ──
+                .on('click.distadv', '.js-tpl-add', function() { openTemplateModal(null); })
+                .on('click.distadv', '.js-tpl-edit', function() { openTemplateModal(tplCache[$(this).data('id')]); })
+                .on('click.distadv', '.js-tpl-del', function() {
+                    if (window.confirm(self.i18n('templates.confirm_delete'))) deleteTemplate($(this).data('id'));
+                })
+                // ── шаблоны: модалка ──
+                .on('click.distadv', '.js-modal-close', function() { $(this).closest('.dist-modal').remove(); })
+                .on('click.distadv', '.js-tpl-seg .dist-seg__i', function() {
+                    var $modal = $(this).closest('.dist-modal');
+                    var type   = $(this).data('type');
+                    $modal.data('type', type);
+                    $modal.find('.dist-seg__i').removeClass('dist-seg__i--on');
+                    $(this).addClass('dist-seg__i--on');
+                    // Показать/убрать поля процентов у чипов.
+                    var isPct = (type === 'percent');
+                    $modal.find('.dist-chip').each(function() {
+                        var $c = $(this);
+                        if (isPct && !$c.find('.js-chip-pct').length) {
+                            $c.find('.dist-chip__x').before('<input type="number" class="dist-chip__pct js-chip-pct" min="0" max="100" value="0">%');
+                        } else if (!isPct) {
+                            $c.find('.js-chip-pct').remove();
+                            $c.find('span:contains("%")');
+                        }
+                    });
+                    if (!isPct) $modal.find('.dist-chip').contents().filter(function(){ return this.nodeType===3 && this.nodeValue==='%'; }).remove();
+                })
+                .on('change.distadv', '.js-tpl-mgr-add', function() {
+                    var uid = $(this).val();
+                    if (!uid) return;
+                    var $modal = $(this).closest('.dist-modal');
+                    var name   = $(this).find('option:selected').text();
+                    addChip($modal.find('.js-tpl-chips'), parseInt(uid, 10), name, 0, $modal.data('type') === 'percent');
+                    $(this).val('');
+                })
+                .on('click.distadv', '.js-chip-x', function() { $(this).closest('.dist-chip').remove(); })
+                .on('click.distadv', '.js-tpl-save', function() { saveTemplate($(this).closest('.dist-modal')); });
         }
 
         // ─── Schedules tab ────────────────────────────────────────────────────
