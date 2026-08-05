@@ -29,17 +29,22 @@ class OAuthController
         $code   = $params['code']    ?? null;
         $domain = $params['referer'] ?? null; // e.g. "mycompany.amocrm.ru"
 
-        if (!$code || !$domain) {
-            return $this->text($response, 'Missing code or referer parameter.', 400);
-        }
-
         $clientId     = $_ENV['AMO_CLIENT_ID']     ?? '';
         $clientSecret = $_ENV['AMO_CLIENT_SECRET'] ?? '';
         $redirectUri  = $_ENV['AMO_REDIRECT_URI']  ?? '';
+        $longTerm     = trim((string) ($_ENV['AMO_LONG_TERM_TOKEN'] ?? ''));
 
-        if (!$clientId || !$clientSecret || !$redirectUri) {
-            $this->logger->error('OAuth env variables not configured');
-            return $this->text($response, 'Server configuration error.', 500);
+        // Режим долгосрочного токена: полноценный OAuth-обмен не нужен —
+        // подтверждаем установку, чтобы amoCRM завершил активацию виджета.
+        if ($longTerm !== '' || !$clientId || !$clientSecret || !$redirectUri) {
+            $this->logger->info('OAuth callback: установка подтверждена (режим долгосрочного токена)', [
+                'domain' => $domain,
+            ]);
+            return $this->html($response, 'Установка завершена. Можно закрыть это окно.');
+        }
+
+        if (!$code || !$domain) {
+            return $this->text($response, 'Missing code or referer parameter.', 400);
         }
 
         try {
@@ -80,5 +85,16 @@ class OAuthController
     {
         $response->getBody()->write($text);
         return $response->withStatus($status)->withHeader('Content-Type', 'text/plain');
+    }
+
+    private function html(ResponseInterface $response, string $message, int $status = 200): ResponseInterface
+    {
+        $html = '<!doctype html><meta charset="utf-8"><title>Распределение сделок</title>'
+              . '<div style="font:15px/1.5 Roboto,Arial,sans-serif;color:#141414;'
+              . 'display:flex;align-items:center;justify-content:center;height:100vh;margin:0">'
+              . '<div style="text-align:center"><div style="font-size:22px;font-weight:700;'
+              . 'color:#d22730;margin-bottom:8px">KO:AGENCY</div>' . htmlspecialchars($message) . '</div></div>';
+        $response->getBody()->write($html);
+        return $response->withStatus($status)->withHeader('Content-Type', 'text/html; charset=utf-8');
     }
 }

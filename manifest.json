@@ -6,11 +6,12 @@
     "logo": "images/logo.png",
     "logo_medium": "images/logo_medium.png",
     "cover": "images/cover.jpg",
-    "version": "1.0.15",
+    "version": "1.0.16",
     "interface_version": 2,
     "init_once": false,
     "locale": ["ru", "en"],
     "installation": true,
+    "oauth": "Y",
     "digital_pipeline": true,
     "support": {
       "link": "https://raspredelenie.koagency.ru",
