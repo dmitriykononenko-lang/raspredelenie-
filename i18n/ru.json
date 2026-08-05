@@ -61,6 +61,7 @@
     "server_url_label": "URL сервера распределения",
     "server_url_placeholder": "https://your-server.com",
     "server_url_hint": "Адрес бэкенд-сервиса, обрабатывающего распределение сделок.",
+    "security_key_label": "Ключ безопасности",
     "method_label": "Метод распределения",
     "method_round_robin": "Round Robin (по очереди)",
     "method_workload": "По загруженности",

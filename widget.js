@@ -6,7 +6,7 @@ define(['jquery', 'underscore'], function($, _) {
             system = self.system();
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.0.12';
+        var WIDGET_VERSION = '1.0.13';
 
         var DISTRIBUTION_METHODS = {
             ROUND_ROBIN: 'round_robin',
@@ -22,7 +22,15 @@ define(['jquery', 'underscore'], function($, _) {
 
         // ─── Helpers ──────────────────────────────────────────────────────────
         function getSettings() {
-            return $.extend(true, {}, DEFAULT_SETTINGS, self.params);
+            // v2: настройки читаются через get_settings(); фолбэк на self.params.
+            var p = self.params;
+            try {
+                if (typeof self.get_settings === 'function') {
+                    var s = self.get_settings();
+                    if (s) p = s;
+                }
+            } catch (e) {}
+            return $.extend(true, {}, DEFAULT_SETTINGS, p || {});
         }
 
         function notify(text, type) {
@@ -1285,6 +1293,22 @@ define(['jquery', 'underscore'], function($, _) {
         /** Called when widget loaded on a page but not yet initialized */
         self.contacts = {
             selected: function() { return true; }
+        };
+
+        // ═════════════════════════════════════════════════════════════════════
+        //   amoCRM (interface_version 2) вызывает колбэки ТОЛЬКО через
+        //   this.callbacks. Функции определены выше на self и используют
+        //   замыкание, поэтому просто ссылаемся на них (эталон — «Дубли»).
+        // ═════════════════════════════════════════════════════════════════════
+        self.callbacks = {
+            render:           self.render,
+            init:             self.init,
+            bind_actions:     self.bind_actions,
+            settings:         self.settings,
+            advancedSettings: self.advancedSettings,
+            dpSettings:       self.dpSettings,
+            onSave:           self.onSave,
+            destroy:          self.destroy
         };
 
         return self;

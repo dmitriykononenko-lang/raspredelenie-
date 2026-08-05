@@ -6,36 +6,15 @@
     "logo": "images/logo.png",
     "logo_medium": "images/logo_medium.png",
     "cover": "images/cover.jpg",
-    "version": "1.0.12",
-    "interface_version": 1,
+    "version": "1.0.13",
+    "interface_version": 2,
     "init_once": false,
-    "conflict_mode": false,
     "locale": ["ru", "en"],
     "installation": true,
     "digital_pipeline": true,
-    "settings": {
-      "server_url": {
-        "name": "server_url",
-        "title": "Server URL",
-        "type": "text",
-        "required": true
-      },
-      "security_key": {
-        "name": "security_key",
-        "title": "Security key",
-        "type": "pass",
-        "required": false
-      },
-      "distribution_method": {
-        "name": "distribution_method",
-        "title": "Distribution method",
-        "type": "select",
-        "required": true,
-        "values": [
-          {"id": "round_robin", "option": "Round Robin (Queue)"},
-          {"id": "workload", "option": "Workload based"}
-        ]
-      }
+    "support": {
+      "link": "https://raspredelenie.koagency.ru",
+      "email": "partnerskoda@gmail.com"
     }
   },
   "locations": [
@@ -43,6 +22,27 @@
     "settings",
     "advanced_settings"
   ],
+  "settings": {
+    "server_url": {
+      "name": "settings.server_url_label",
+      "type": "text",
+      "required": true
+    },
+    "security_key": {
+      "name": "settings.security_key_label",
+      "type": "pass",
+      "required": false
+    },
+    "distribution_method": {
+      "name": "settings.method_label",
+      "type": "list",
+      "required": true,
+      "values": {
+        "round_robin": "Round Robin",
+        "workload": "По загрузке"
+      }
+    }
+  },
   "advanced": {
     "title": "advanced.title"
   },

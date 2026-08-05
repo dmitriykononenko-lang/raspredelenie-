@@ -61,6 +61,7 @@
     "server_url_label": "Distribution server URL",
     "server_url_placeholder": "https://your-server.com",
     "server_url_hint": "Address of the backend service that handles deal distribution.",
+    "security_key_label": "Security key",
     "method_label": "Distribution method",
     "method_round_robin": "Round Robin (queue-based)",
     "method_workload": "By workload",
