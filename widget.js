@@ -6,7 +6,12 @@ define(['jquery', 'underscore'], function($, _) {
             system = self.system();
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.0.13';
+        var WIDGET_VERSION = '1.0.14';
+
+        // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
+        // установки без заполнения поля. Поле server_url в настройках остаётся
+        // необязательным переопределением (если сервер сменится).
+        var DEFAULT_SERVER_URL = 'https://raspredelenie.koagency.ru';
 
         var DISTRIBUTION_METHODS = {
             ROUND_ROBIN: 'round_robin',
@@ -48,7 +53,8 @@ define(['jquery', 'underscore'], function($, _) {
         // ─── API calls to our backend ─────────────────────────────────────────
         function apiRequest(path, data, method) {
             var settings  = getSettings();
-            var serverUrl = $.trim(settings.server_url).replace(/\/$/, '');
+            // Вшитый адрес по умолчанию; поле в настройках переопределяет его.
+            var serverUrl = $.trim(settings.server_url || DEFAULT_SERVER_URL).replace(/\/$/, '');
 
             if (!serverUrl) {
                 console.warn('[DealDist] server_url is not configured');
