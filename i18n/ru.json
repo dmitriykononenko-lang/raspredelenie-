@@ -95,5 +95,8 @@
     "no_pipeline": "Воронка не выбрана",
     "no_managers": "Список менеджеров пуст",
     "server_error": "Ошибка сервера: {message}"
+  },
+  "left_menu": {
+    "title": "Распределение"
   }
 }

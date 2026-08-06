@@ -95,5 +95,8 @@
     "no_pipeline": "Pipeline not selected",
     "no_managers": "Manager list is empty",
     "server_error": "Server error: {message}"
+  },
+  "left_menu": {
+    "title": "Distribution"
   }
 }

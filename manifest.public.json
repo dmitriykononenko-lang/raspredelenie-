@@ -1,0 +1,59 @@
+{
+  "_comment": "ПУБЛИЧНАЯ сборка (амоМаркет, левое меню). Использовать вместо manifest.json ТОЛЬКО для публичной интеграции. code/secret_key берутся из кабинета amoМаркета. free (платный/бесплатный) и countries (страны) задаются в форме публикации кабинета, НЕ в манифесте (иначе Unknown field). Публичная загрузка сейчас может блокироваться amoCRM (Secret key ... not correct) — см. docs/AMOCRM-WIDGET-GOTCHAS.md.",
+  "widget": {
+    "name": "widget.name",
+    "description": "widget.description",
+    "short_description": "widget.short_description",
+    "logo": "images/logo.png",
+    "logo_medium": "images/logo_medium.png",
+    "cover": "images/cover.jpg",
+    "version": "1.1.0",
+    "interface_version": 2,
+    "init_once": false,
+    "locale": ["ru", "en"],
+    "installation": true,
+    "oauth": "Y",
+    "digital_pipeline": true,
+    "code": "REPLACE_WITH_PUBLIC_CODE",
+    "secret_key": "REPLACE_WITH_PUBLIC_SECRET",
+    "support": {
+      "link": "https://raspredelenie.koagency.ru",
+      "email": "partnerskoda@gmail.com"
+    }
+  },
+  "locations": [
+    "digital_pipeline",
+    "settings",
+    "advanced_settings",
+    "widget_page"
+  ],
+  "left_menu": {
+    "raspredelenie": {
+      "title": "left_menu.title",
+      "icons": {
+        "light": "images/menu_light.svg",
+        "dark": "images/menu_dark.svg"
+      },
+      "sort": { "after": "leads" }
+    }
+  },
+  "settings": {
+    "server_url": {
+      "name": "settings.server_url_label",
+      "type": "text",
+      "required": false
+    },
+    "security_key": {
+      "name": "settings.security_key_label",
+      "type": "pass",
+      "required": false
+    }
+  },
+  "advanced": {
+    "title": "advanced.title"
+  },
+  "dp": {
+    "webhook_url": "https://raspredelenie.koagency.ru/webhook/leads",
+    "action_multiple": false
+  }
+}

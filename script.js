@@ -11,7 +11,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.0.17';
+        var WIDGET_VERSION = '1.0.18';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -623,6 +623,22 @@ define(['jquery', 'underscore'], function($, _) {
                 var $area = $('.widget_advanced_settings, .list-pipelines__hidden').first();
                 ($area.length ? $area : $(document.body)).append($mount);
             }
+            renderAdvancedPage($mount);
+            return true;
+        };
+
+        // Страница из левого меню (widget_page). Работает у ПУБЛИЧНОЙ интеграции;
+        // у приватной колбэк просто не вызывается. Рендерит тот же экран.
+        self.initMenuPage = function() {
+            injectCss();
+            var s    = getSettings();
+            var code = s.widget_code || (self.params && self.params.widget_code) || '';
+            var $area = $('#work-area-' + code);
+            if (!$area.length) $area = $('[id^="work-area-"], .work-area, #work-area').first();
+            if (!$area.length) $area = $(document.body);
+            $area.empty();
+            var $mount = $('<div class="dist-adv dist-adv--wide"></div>');
+            $area.append($mount);
             renderAdvancedPage($mount);
             return true;
         };
@@ -1334,6 +1350,7 @@ define(['jquery', 'underscore'], function($, _) {
             bind_actions:     self.bind_actions,
             settings:         self.settings,
             advancedSettings: self.advancedSettings,
+            initMenuPage:     self.initMenuPage,
             dpSettings:       self.dpSettings,
             onSave:           self.onSave,
             destroy:          self.destroy
