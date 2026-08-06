@@ -2,11 +2,16 @@ define(['jquery', 'underscore'], function($, _) {
     'use strict';
 
     var CustomWidget = function() {
-        var self = this,
-            system = self.system();
+        var self = this;
+
+        // self.system() инжектится загрузчиком amoCRM ПОЗЖЕ — в конструкторе
+        // его вызывать нельзя (краш). Читаем лениво и безопасно.
+        function amoSystem() {
+            try { return self.system() || {}; } catch (e) { return {}; }
+        }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.0.16';
+        var WIDGET_VERSION = '1.0.17';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -67,7 +72,7 @@ define(['jquery', 'underscore'], function($, _) {
                 type:     method || 'POST',
                 dataType: 'json',
                 headers: {
-                    'X-Account-Id':     system.account_id || '',
+                    'X-Account-Id':     amoSystem().account_id || '',
                     'X-Widget-Version': WIDGET_VERSION
                 }
             };
@@ -401,7 +406,7 @@ define(['jquery', 'underscore'], function($, _) {
             if (!leadId) return;
 
             apiRequest('/api/distribute', {
-                account_id:          system.account_id,
+                account_id:          amoSystem().account_id,
                 lead_id:             leadId,
                 pipeline_id:         eventData.pipeline_id || null,
                 stage_id:            eventData.lead_status_id || null,
@@ -434,8 +439,23 @@ define(['jquery', 'underscore'], function($, _) {
 
         /** Called once during initialization */
         self.init = function() {
+            injectCss();
             return true;
         };
+
+        // CSS не подключается автоматически — вставляем <link> на наш файл.
+        function injectCss() {
+            try {
+                if (document.querySelector('link[data-dist-css]')) return;
+                var base = (self.params && self.params.path) ? self.params.path : '';
+                if (!base) return;
+                var link = document.createElement('link');
+                link.rel  = 'stylesheet';
+                link.href = base.replace(/\/$/, '') + '/css/widget.css';
+                link.setAttribute('data-dist-css', '1');
+                document.head.appendChild(link);
+            } catch (e) {}
+        }
 
         /** Required by AmoCRM — bind UI events after render */
         self.bind = function() {
@@ -449,6 +469,7 @@ define(['jquery', 'underscore'], function($, _) {
 
         /** Render settings page */
         self.settings = function($container) {
+            injectCss();
             if (!$container) return false;
             $settingsContainer = $container;
 
@@ -585,6 +606,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         self.advancedSettings = function() {
+            injectCss();
             var titleText = $.trim(self.i18n('advanced.title') || 'Распределение сделок');
             var $title = $();
             $('h1, h2, h3').each(function() {
@@ -1194,7 +1216,7 @@ define(['jquery', 'underscore'], function($, _) {
             // Save queue state to backend
             if (self.params.server_url) {
                 apiRequest('/api/settings', {
-                    account_id: system.account_id,
+                    account_id: amoSystem().account_id,
                     settings:   self.params
                 }, 'PUT');
             }
