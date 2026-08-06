@@ -32,6 +32,11 @@ class AuthMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
+        // CORS preflight не несёт заголовков — пропускаем, ответит CorsMiddleware.
+        if ($request->getMethod() === 'OPTIONS') {
+            return $handler->handle($request);
+        }
+
         $path = $request->getUri()->getPath();
 
         // Защищаем только /api/*

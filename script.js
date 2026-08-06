@@ -11,7 +11,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.0.18';
+        var WIDGET_VERSION = '1.0.19';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -320,7 +320,7 @@ define(['jquery', 'underscore'], function($, _) {
 
         function addManagerRow($row, manager) {
             var $list = $row.find('.js-managers-list');
-            var users = (AMOCRM.data && AMOCRM.data.users) || [];
+            var users = getUsers();
 
             var options = _.map(users, function(user) {
                 var sel = manager.id && String(manager.id) === String(user.id) ? ' selected' : '';
@@ -415,7 +415,7 @@ define(['jquery', 'underscore'], function($, _) {
                 dp_settings:         dpSettings || {}
             }).done(function(response) {
                 if (response && response.user_id) {
-                    var users   = (AMOCRM.data && AMOCRM.data.users) || [];
+                    var users   = getUsers();
                     var user    = _.find(users, function(u) { return String(u.id) === String(response.user_id); });
                     var name    = user ? user.name : '#' + response.user_id;
                     notify('Сделка #' + leadId + ' назначена на: ' + name, 'success');
@@ -1012,7 +1012,7 @@ define(['jquery', 'underscore'], function($, _) {
             var $select  = $panel.find('.js-schedule-user-select');
 
             // Populate user selector
-            var users = (AMOCRM.data && AMOCRM.data.users) || [];
+            var users = getUsers();
             $select.empty().append('<option value="">— выберите менеджера —</option>');
             _.each(users, function(u) {
                 $select.append('<option value="' + u.id + '">' + _.escape(u.name) + '</option>');
@@ -1182,7 +1182,7 @@ define(['jquery', 'underscore'], function($, _) {
                     return;
                 }
 
-                var users = (AMOCRM.data && AMOCRM.data.users) || [];
+                var users = getUsers();
 
                 var rows = _.map(entries, function(e) {
                     var user    = _.find(users, function(u) { return String(u.id) === String(e.manager_id); });
@@ -1279,7 +1279,7 @@ define(['jquery', 'underscore'], function($, _) {
 
                     // Replace addManagerRow helper for dp context
                     $container.on('click', '.js-dp-add-manager', function() {
-                        var users = (AMOCRM.data && AMOCRM.data.users) || [];
+                        var users = getUsers();
                         var options = _.map(users, function(u) {
                             return '<option value="' + u.id + '">' + _.escape(u.name) + '</option>';
                         }).join('');
