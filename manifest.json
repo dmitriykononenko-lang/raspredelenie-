@@ -6,7 +6,7 @@
     "logo": "images/logo.png",
     "logo_medium": "images/logo_medium.png",
     "cover": "images/cover.jpg",
-    "version": "1.0.20",
+    "version": "1.0.21",
     "interface_version": 2,
     "init_once": false,
     "locale": ["ru", "en"],
@@ -21,8 +21,19 @@
   "locations": [
     "digital_pipeline",
     "settings",
-    "advanced_settings"
+    "advanced_settings",
+    "widget_page"
   ],
+  "left_menu": {
+    "raspredelenie": {
+      "title": "left_menu.title",
+      "icons": {
+        "light": "images/menu_light.svg",
+        "dark": "images/menu_dark.svg"
+      },
+      "sort": { "after": "leads" }
+    }
+  },
   "settings": {
     "server_url": {
       "name": "settings.server_url_label",
