@@ -26,7 +26,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.0.21';
+        var WIDGET_VERSION = '1.0.22';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -688,19 +688,34 @@ define(['jquery', 'underscore'], function($, _) {
             return true;
         };
 
-        // Страница из левого меню (widget_page). Работает у ПУБЛИЧНОЙ интеграции;
-        // у приватной колбэк просто не вызывается. Рендерит тот же экран.
-        self.initMenuPage = function() {
+        // Страница из левого меню (widget_page). Контейнер #work-area-<code>
+        // amoCRM создаёт асинхронно — ищем с повтором, иначе страница пустая.
+        self.initMenuPage = function(params) {
             injectCss();
-            var s    = getSettings();
-            var code = s.widget_code || (self.params && self.params.widget_code) || '';
-            var $area = $('#work-area-' + code);
-            if (!$area.length) $area = $('[id^="work-area-"], .work-area, #work-area').first();
-            if (!$area.length) $area = $(document.body);
-            $area.empty();
-            var $mount = $('<div class="dist-adv dist-adv--wide"></div>');
-            $area.append($mount);
-            renderAdvancedPage($mount);
+            var attempts = 0;
+            function findArea() {
+                var code = (self.params && self.params.widget_code) ||
+                           (getSettings().widget_code) || '';
+                var $a = code ? $('#work-area-' + code) : $();
+                if (!$a.length) $a = $('div[id^="work-area-"]:visible').first();
+                if (!$a.length) $a = $('div[id^="work-area-"]').first();
+                if (!$a.length) $a = $('.work-area, #work-area').first();
+                return $a;
+            }
+            function mount() {
+                var $area = findArea();
+                if (!$area.length) {
+                    if (attempts++ < 25) { setTimeout(mount, 120); return; }
+                    $area = $('.easy-element, #page_holder .content, #content').first();
+                    if (!$area.length) $area = $(document.body);
+                }
+                if ($area.find('.dist-adv').length) return; // уже отрисовано
+                $area.empty();
+                var $mount = $('<div class="dist-adv dist-adv--wide"></div>');
+                $area.append($mount);
+                renderAdvancedPage($mount);
+            }
+            mount();
             return true;
         };
 
