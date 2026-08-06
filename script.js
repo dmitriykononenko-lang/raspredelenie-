@@ -26,7 +26,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.0.19';
+        var WIDGET_VERSION = '1.0.20';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -495,13 +495,26 @@ define(['jquery', 'underscore'], function($, _) {
 
                 // ── Tab navigation ──────────────────────────────────────────
                 '  <div class="dist-tabs">',
-                '    <button type="button" class="dist-tab dist-tab--active" data-tab="rules">Правила</button>',
+                '    <button type="button" class="dist-tab dist-tab--active" data-tab="status">Сотрудники</button>',
+                '    <button type="button" class="dist-tab" data-tab="rules">Правила</button>',
                 '    <button type="button" class="dist-tab" data-tab="schedules">Расписания</button>',
                 '    <button type="button" class="dist-tab" data-tab="log">История</button>',
                 '  </div>',
 
+                // ── Tab: Сотрудники (кто участвует в распределении) ─────────
+                '  <div class="dist-tab-panel" data-panel="status">',
+                '    <div class="dist-section">',
+                '      <div class="dist-log-toolbar">',
+                '        <h4 class="dist-section__title" style="margin:0;">Сотрудники в распределении</h4>',
+                '        <button type="button" class="js-refresh-status dist-btn dist-btn--secondary dist-btn--sm">&#x21bb; Обновить</button>',
+                '      </div>',
+                '      <p class="dist-hint">Тумблер справа задаёт, участвует ли сотрудник в распределении. Выключенным сделки не назначаются. Список берётся из пользователей amoCRM.</p>',
+                '      <div class="js-status-body dist-status-body"><p class="dist-hint">Загрузка...</p></div>',
+                '    </div>',
+                '  </div>',
+
                 // ── Tab: Rules ──────────────────────────────────────────────
-                '  <div class="dist-tab-panel" data-panel="rules">',
+                '  <div class="dist-tab-panel" data-panel="rules" style="display:none;">',
 
                 '    <div class="dist-section">',
                 '      <div class="dist-field">',
@@ -566,14 +579,47 @@ define(['jquery', 'underscore'], function($, _) {
                 $container.find('.dist-tab-panel').hide();
                 $container.find('[data-panel="' + tab + '"]').show();
 
+                if (tab === 'status')    renderStatusTab($container);
                 if (tab === 'schedules') renderSchedulesTab($container);
                 if (tab === 'log')       renderLogTab($container);
             });
 
+            // Тумблер «в распределении / вне» прямо в настройках.
+            $container.on('change', '.js-mgr-online', function() {
+                var $i = $(this);
+                setStatus($i.data('uid'), $i.prop('checked'), $i);
+            });
+            $container.on('click', '.js-refresh-status', function() {
+                renderStatusTab($container);
+            });
+
             bindSettingsEvents($container, settings);
+
+            // Вкладка «Сотрудники» открыта по умолчанию — грузим сразу.
+            renderStatusTab($container);
 
             return true;
         };
+
+        // Ростер сотрудников с тумблерами участия — версия для панели settings.
+        function renderStatusTab($container) {
+            var $body = $container.find('.js-status-body');
+            if (!$body.length) return;
+            var users = getUsers();
+            if (!users.length) {
+                $body.html(emptyState(self.i18n('status.no_users')));
+                return;
+            }
+            $body.html('<p class="dist-hint">' + _.escape(self.i18n('common.loading')) + '</p>');
+            apiRequest('/api/status', null, 'GET')
+                .done(function(resp) {
+                    renderStatusTable($body, users, (resp && resp.statuses) || {});
+                })
+                .fail(function() {
+                    renderStatusTable($body, users, {});
+                    notify(self.i18n('status.load_error'), 'error');
+                });
+        }
 
         // ═════════════════════════════════════════════════════════════════════
         //   Advanced settings — полностраничный виджет (сайдбар + модули)
