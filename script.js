@@ -10,6 +10,21 @@ define(['jquery', 'underscore'], function($, _) {
             try { return self.system() || {}; } catch (e) { return {}; }
         }
 
+        // ID аккаunta amoCRM. ВАЖНО: self.system() его НЕ содержит — id живёт
+        // в AMOCRM.constant('account').id. Раньше брали amoSystem().account_id
+        // → заголовок X-Account-Id уходил пустым → бэкенд отвечал 400
+        // "account_id required" ("Не удалось загрузить статусы/расписания").
+        function getAccountId() {
+            try {
+                var acc = window.AMOCRM && AMOCRM.constant && AMOCRM.constant('account');
+                if (acc && acc.id) return String(acc.id);
+            } catch (e) {}
+            var sys = amoSystem();
+            if (sys && sys.account_id) return String(sys.account_id);
+            if (sys && sys.subdomain)  return String(sys.subdomain);
+            return '';
+        }
+
         // ─── Constants ────────────────────────────────────────────────────────
         var WIDGET_VERSION = '1.0.19';
 
@@ -72,7 +87,7 @@ define(['jquery', 'underscore'], function($, _) {
                 type:     method || 'POST',
                 dataType: 'json',
                 headers: {
-                    'X-Account-Id':     amoSystem().account_id || '',
+                    'X-Account-Id':     getAccountId(),
                     'X-Widget-Version': WIDGET_VERSION
                 }
             };
@@ -406,7 +421,7 @@ define(['jquery', 'underscore'], function($, _) {
             if (!leadId) return;
 
             apiRequest('/api/distribute', {
-                account_id:          amoSystem().account_id,
+                account_id:          getAccountId(),
                 lead_id:             leadId,
                 pipeline_id:         eventData.pipeline_id || null,
                 stage_id:            eventData.lead_status_id || null,
@@ -1232,7 +1247,7 @@ define(['jquery', 'underscore'], function($, _) {
             // Save queue state to backend
             if (self.params.server_url) {
                 apiRequest('/api/settings', {
-                    account_id: amoSystem().account_id,
+                    account_id: getAccountId(),
                     settings:   self.params
                 }, 'PUT');
             }
