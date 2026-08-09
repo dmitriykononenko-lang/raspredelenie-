@@ -1,5 +1,5 @@
 {
-  "_comment": "ПУБЛИЧНАЯ сборка (амоМаркет, левое меню). Использовать вместо manifest.json ТОЛЬКО для публичной интеграции. code/secret_key берутся из кабинета amoМаркета. free (платный/бесплатный) и countries (страны) задаются в форме публикации кабинета, НЕ в манифесте (иначе Unknown field). Публичная загрузка сейчас может блокироваться amoCRM (Secret key ... not correct) — см. docs/AMOCRM-WIDGET-GOTCHAS.md.",
+  "_comment": "ПУБЛИЧНАЯ сборка (левое меню). Для публичной интеграции amoМаркета. code/secret_key — сгенерирует кабинет при создании публичной интеграции; вставить СЮДА перед сборкой zip (иначе 'Secret key not correct'). free/countries/category — маркетплейс-поля, влияют на листинг; для установки на свой аккаунт можно менять в форме публикации кабинета. Левое меню (widget_page) рендерится ТОЛЬКО у публичной интеграции.",
   "widget": {
     "name": "widget.name",
     "description": "widget.description",
@@ -54,6 +54,19 @@
   },
   "dp": {
     "webhook_url": "https://raspredelenie.koagency.ru/webhook/leads",
-    "action_multiple": false
-  }
+    "action_multiple": false,
+    "settings": {
+      "distribution_method": {
+        "name": "settings.method_label",
+        "type": "list",
+        "values": {
+          "round_robin": "settings.method_round_robin",
+          "workload": "settings.method_workload"
+        }
+      }
+    }
+  },
+  "free": "N",
+  "countries": ["RU", "KZ", "BY"],
+  "category": "automation"
 }
