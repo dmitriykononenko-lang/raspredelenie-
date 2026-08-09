@@ -9,6 +9,7 @@ use DealDist\Distribution\DistributionLog;
 use DealDist\Distribution\DistributionService;
 use DealDist\Distribution\QueueStorage;
 use DealDist\Distribution\ScheduleChecker;
+use DealDist\Distribution\StatusStorage;
 use Monolog\Logger;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -35,6 +36,7 @@ class DistributeController
                 $apiClient,
                 new QueueStorage(),
                 new ScheduleChecker(),
+                new StatusStorage(),
                 new DistributionLog(),
                 $this->logger,
             );
