@@ -6,7 +6,6 @@ namespace DealDist\Http\Controller;
 
 use DealDist\AmoCRM\ApiClient;
 use GuzzleHttp\Client;
-use GuzzleHttp\Exception\RequestException;
 use Monolog\Logger;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -35,31 +34,17 @@ class OAuthController
         $redirectUri  = $_ENV['AMO_REDIRECT_URI']  ?? '';
         $longTerm     = trim((string) ($_ENV['AMO_LONG_TERM_TOKEN'] ?? ''));
 
-        // Диагностика: фиксируем, что callback вообще вызван и с чем.
-        $this->logger->info('OAuth callback вызван', [
-            'domain'       => $domain,
-            'has_code'     => $code ? 'yes' : 'no',
-            'client_id'    => $clientId !== '' ? (substr($clientId, 0, 8) . '…') : '(пусто)',
-            'redirect_uri' => $redirectUri ?: '(пусто)',
-            'mode'         => ($longTerm !== '' || !$clientId || !$clientSecret || !$redirectUri)
-                              ? 'confirm-only' : 'oauth-exchange',
-        ]);
-
-        // Режим долгосрочного токена / OAuth не настроен: полноценный обмен не
-        // нужен — подтверждаем установку, чтобы amoCRM активировал виджет.
+        // Режим долгосрочного токена: полноценный OAuth-обмен не нужен —
+        // подтверждаем установку, чтобы amoCRM завершил активацию виджета.
         if ($longTerm !== '' || !$clientId || !$clientSecret || !$redirectUri) {
+            $this->logger->info('OAuth callback: установка подтверждена (режим долгосрочного токена)', [
+                'domain' => $domain,
+            ]);
             return $this->html($response, 'Установка завершена. Можно закрыть это окно.');
         }
 
-        // OAuth-режим: пытаемся обменять код на токены. ВАЖНО: даже если обмен
-        // не удался, отвечаем 200 — иначе amoCRM откатывает виджет в «Отключено».
-        // Токен всегда можно донастроить/переавторизовать отдельно. Точную
-        // причину сбоя пишем в лог (см. `logs`).
         if (!$code || !$domain) {
-            $this->logger->warning('OAuth callback без code/referer — установку подтверждаем, обмен пропущен', [
-                'domain' => $domain, 'has_code' => $code ? 'yes' : 'no',
-            ]);
-            return $this->html($response, 'Установка завершена. Можно закрыть это окно.');
+            return $this->text($response, 'Missing code or referer parameter.', 400);
         }
 
         try {
@@ -87,25 +72,12 @@ class OAuthController
             $apiClient = new ApiClient($this->logger);
             $apiClient->saveTokens($accountId, $domain, $tokens);
 
-            $this->logger->info('OAuth: токены получены и сохранены', ['account_id' => $accountId, 'domain' => $domain]);
+            $this->logger->info('OAuth tokens saved', ['account_id' => $accountId, 'domain' => $domain]);
 
-            return $this->html($response, 'Авторизация успешна. Можно закрыть это окно.');
-        } catch (RequestException $e) {
-            // Ошибка от amoCRM (неверный client_secret / redirect_uri / истёкший
-            // код) — вытаскиваем тело ответа, там точная причина.
-            $body = $e->hasResponse() ? (string) $e->getResponse()->getBody() : '(нет тела ответа)';
-            $this->logger->error('OAuth-обмен НЕ удался (ответ amoCRM)', [
-                'domain'       => $domain,
-                'redirect_uri' => $redirectUri,
-                'http_status'  => $e->hasResponse() ? $e->getResponse()->getStatusCode() : 0,
-                'amo_response' => $body,
-                'hint'         => 'Сверьте client_id/client_secret и redirect_uri буква-в-букву с кабинетом интеграции',
-            ]);
-            // 200, чтобы установка не откатилась.
-            return $this->html($response, 'Установка завершена. Авторизацию нужно повторить (см. логи сервера).');
+            return $this->text($response, 'Authorization successful. You may close this window.');
         } catch (\Throwable $e) {
-            $this->logger->error('OAuth callback: непредвиденная ошибка', ['error' => $e->getMessage()]);
-            return $this->html($response, 'Установка завершена. Авторизацию нужно повторить (см. логи сервера).');
+            $this->logger->error('OAuth callback failed', ['error' => $e->getMessage()]);
+            return $this->text($response, 'Authorization failed: ' . $e->getMessage(), 500);
         }
     }
 
