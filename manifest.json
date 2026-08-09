@@ -6,10 +6,13 @@
     "logo": "images/logo.png",
     "logo_medium": "images/logo_medium.png",
     "cover": "images/cover.jpg",
-    "version": "1.0.25",
+    "version": "1.0.26",
     "interface_version": 2,
     "init_once": false,
-    "locale": ["ru", "en"],
+    "locale": [
+      "ru",
+      "en"
+    ],
     "installation": true,
     "oauth": "Y",
     "digital_pipeline": true,

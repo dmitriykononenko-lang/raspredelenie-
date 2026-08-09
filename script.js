@@ -26,7 +26,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.0.25';
+        var WIDGET_VERSION = '1.0.26';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -1330,13 +1330,13 @@ define(['jquery', 'underscore'], function($, _) {
             self.params.distribution_method = $container.find('.js-dist-method').val();
             self.params.rules               = collectRules($container);
 
-            // Save queue state to backend
-            if (self.params.server_url) {
-                apiRequest('/api/settings', {
-                    account_id: getAccountId(),
-                    settings:   self.params
-                }, 'PUT');
-            }
+            // Всегда сохраняем правила в бэкенд. apiRequest подставит вшитый
+            // DEFAULT_SERVER_URL, если поле URL сервера оставили пустым — иначе
+            // правила не попадали бы в бэкенд и распределение молча не работало.
+            apiRequest('/api/settings', {
+                account_id: getAccountId(),
+                settings:   self.params
+            }, 'PUT');
 
             return true;
         };
