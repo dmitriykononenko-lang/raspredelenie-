@@ -26,7 +26,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.0.24';
+        var WIDGET_VERSION = '1.0.25';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -781,8 +781,11 @@ define(['jquery', 'underscore'], function($, _) {
 
         // ── Панель: Статусы ─────────────────────────────────────────────────────
         function renderStatusPanel($mount, $panel) {
+            var refreshBtn = '<button class="dist-btn dist-btn--secondary dist-btn--sm js-status-refresh">&#x21bb; ' +
+                             _.escape(self.i18n('common.refresh')) + '</button>';
             $panel.html(
-                panelHead(self.i18n('status.title'), self.i18n('status.desc')) +
+                panelHead(self.i18n('status.title'), self.i18n('status.desc'), refreshBtn) +
+                '<div class="dist-status-count dist-muted js-active-count"></div>' +
                 '<div class="dist-card"><div class="js-status-body dist-status-body"><p class="dist-muted">' +
                 _.escape(self.i18n('common.loading')) + '</p></div></div>'
             );
@@ -798,11 +801,25 @@ define(['jquery', 'underscore'], function($, _) {
                     var statuses = (resp && resp.statuses) || {};
                     renderStatusTable($body, users, statuses);
                     syncSelfToggle($mount, statuses);
+                    updateActiveCount($mount);
                 })
                 .fail(function() {
                     renderStatusTable($body, users, {});
+                    updateActiveCount($mount);
                     notify(self.i18n('status.load_error'), 'error');
                 });
+        }
+
+        // Счётчик «сколько сотрудников участвует» — обновляем из текущих тумблеров,
+        // чтобы значение не зависело от формата ответа сервера.
+        function updateActiveCount($scope) {
+            $scope = $scope || $advMount;
+            if (!$scope || !$scope.length) return;
+            var total = $scope.find('.js-mgr-online').length;
+            var on    = $scope.find('.js-mgr-online:checked').length;
+            $scope.find('.js-active-count').text(
+                self.i18n('status.active').replace('{n}', on).replace('{total}', total)
+            );
         }
 
         // ── Панель: Шаблоны ─────────────────────────────────────────────────────
@@ -1012,6 +1029,10 @@ define(['jquery', 'underscore'], function($, _) {
         function setStatus(userId, online, $input) {
             var uid = currentUserId();
             apiRequest('/api/status/' + parseInt(userId, 10), { online: !!online, actor_id: uid }, 'PUT')
+                .done(function() {
+                    notify(self.i18n('status.saved'), 'success'); // тумблеры сохраняются сразу
+                    updateActiveCount();
+                })
                 .fail(function() {
                     if ($input) $input.prop('checked', !online); // откат
                     notify(self.i18n('status.save_error'), 'error');
@@ -1025,6 +1046,10 @@ define(['jquery', 'underscore'], function($, _) {
                 // ── навигация по сайдбару ──
                 .on('click.distadv', '.dist-nav__i[data-p]', function() {
                     switchPanel($mount, $(this).data('p'));
+                })
+                // ── обновить ростер сотрудников ──
+                .on('click.distadv', '.js-status-refresh', function() {
+                    switchPanel($mount, 'status');
                 })
                 // ── статусы ──
                 .on('change.distadv', '.js-mgr-online', function() {
