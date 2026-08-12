@@ -61,8 +61,10 @@
   UI через `advanced_settings`. Это дефолтный архив для загрузки.
 - **`manifest.public.json`** — ПУБЛИЧНАЯ (амоМаркет) с левым меню
   (`left_menu` + `widget_page` + колбэк `initMenuPage`, иконки
-  `images/menu_light.svg` / `menu_dark.svg`). Для публичной сборки положить
-  этот файл вместо `manifest.json` в архив.
+  `images/menu_light.svg` / `menu_dark.svg`). Собирается командой
+  `AMO_WIDGET_CODE=<код> AMO_CLIENT_SECRET=<секрет> ./build.sh --public`
+  — она сама подставит `code`/`secret_key` из окружения и положит
+  `manifest.json` в корень архива (значения в git не хранятся).
 
 `script.js` общий — содержит `initMenuPage` (в приватной просто не вызывается).
 
@@ -71,3 +73,47 @@
 `countries: ["RU","KZ","BY"]` — страны доступности. НО в `manifest.json` они
 вызывают ошибку «Unknown field(s)». Их место — **форма публикации в кабинете
 amoМаркета** (платный/бесплатный, страны), а не манифест. Поэтому в JSON их нет.
+
+## Публичная интеграция: находки при установке (партнёрский аккаунт)
+
+### Баг UI-загрузчика архива в amoМаркете
+Интерфейс загрузки архива публичной интеграции шлёт
+`POST /ajax/v3/public_clients/{uuid}/{app_id}/archive/` с полем файла `archive`
+(плюс `_archive`), тогда как **сервер ожидает поля `widget` + `secret`**. В итоге
+ответ:
+```
+"widget" and "secret" params are required
+```
+а в UI показывается «**Secret key for this widget code is not correct**».
+
+Важно: это **НЕ значит, что код/секрет неверные.** Тот же `code`
+(`raspredelenie_ko`) и секрет прекрасно принимаются при OAuth-обмене (токен
+успешно сохраняется). Проблема именно в UI-загрузчике архива amoМаркета.
+
+Обходы:
+- (а) установить как **приватную** интеграцию (архив из `manifest.json`);
+- (б) обратиться в поддержку amoCRM, приложив этот request/response
+  (несоответствие полей `archive` vs `widget`+`secret`).
+
+### `widget_code` — БЕЗ суффикса
+Вопреки части документации, кабинет **не добавляет** суффикс к коду виджета:
+`code` = ровно то, что введено в поле «Код виджета». Подтверждено запросом
+`GET /ajax/v3/public_clients/{uuid}` → поле `widget_code` = `raspredelenie_ko`
+(без суффикса). Именно это значение передаём в `AMO_WIDGET_CODE` при
+`./build.sh --public`.
+
+### Bootstrap токена без установки виджета («Код авторизации»)
+На вкладке «Ключи и доступы» публичной интеграции есть **«Код авторизации»**
+(живёт ~20 минут). Его можно обменять на токены вручную, не проходя UI-установку:
+```
+GET https://raspredelenie.koagency.ru/oauth/callback?code=<authcode>&referer=<subdomain>.amocrm.ru
+```
+Бэкенд сам выполнит обмен на паре `client_id`/`client_secret` из `.env` и сохранит
+токен (`storage/tokens/<account_id>.json`). Удобно для тестов и первичной
+авторизации техаккаунта. См. также `bin/oauth-bootstrap.sh`.
+
+### `.env` и `env_file` (почему «залипал» client_id)
+Правки `.env` могут не применяться, если в compose есть `env_file` — переменные
+бэкаются в контейнер при создании и не перечитываются на `restart` (симптом amo:
+`Check the client_id parameter`). В этом проекте `env_file` **убран** — `.env`
+монтируется файлом и читается через Dotenv. Подробно: `TROUBLESHOOTING.md` §5.
