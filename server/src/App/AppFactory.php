@@ -25,7 +25,14 @@ class AppFactory
 {
     public static function create(): \Slim\App
     {
-        // Load .env
+        // Загрузка .env из /app/.env (монтируется файлом, см. docker-compose.shared.yml).
+        // createImmutable НЕ перезаписывает уже заданные переменные окружения —
+        // поэтому инфраструктурные значения из compose `environment:` (STORAGE_PATH)
+        // остаются источником истины, а прикладные (AMO_CLIENT_ID/SECRET,
+        // WIDGET_SECRET и т.д.) берутся из смонтированного файла и читаются на
+        // каждый запрос → правки .env применяются по `restart`, без --force-recreate.
+        // env_file в compose НЕ используем намеренно (иначе значения бэкаются в
+        // контейнер при создании и «залипают»).
         $dotenv = \Dotenv\Dotenv::createImmutable(__DIR__ . '/../../');
         $dotenv->safeLoad();
 

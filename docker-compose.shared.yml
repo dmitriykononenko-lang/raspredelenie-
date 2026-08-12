@@ -21,14 +21,19 @@ services:
       context: ./server
       dockerfile: Dockerfile
     restart: unless-stopped
-    env_file: ./server/.env
+    # ВАЖНО: НЕ используем env_file для .env. Переменные из env_file бэкаются в
+    # окружение контейнера В МОМЕНТ СОЗДАНИЯ и не перечитываются на `restart`, а
+    # Dotenv::createImmutable не перезаписывает уже заданные $_ENV — из-за этого
+    # правки .env (например AMO_CLIENT_ID/SECRET) «залипали» на старых значениях
+    # (симптом amo: "Check the client_id parameter"). Теперь .env монтируется
+    # только файлом и читается приложением через Dotenv из /app/.env — правки
+    # применяются обычным `restart`, без --force-recreate.
     environment:
+      # Инфраструктурные переменные задаём здесь (источник истины — compose).
+      # createImmutable их не перетрёт значениями из .env.
       STORAGE_PATH: /storage
     volumes:
       - storage:/storage
-      # .env монтируем файлом: правки применяются после restart, без пересборки
-      # (php-fpm с clear_env=yes не пробрасывает env_file внутрь PHP — приложение
-      #  читает именно этот файл через Dotenv).
       - ./server/.env:/app/.env:ro
     networks:
       - internal

@@ -52,16 +52,29 @@ certbot --nginx -d raspredelenie.koagency.ru --non-interactive --agree-tos -m pa
   certbot certificates            # увидишь оба домена
   ```
 
-## 5. Правка `.env` — теперь применяется по `restart`
+## 5. Правка `.env` — применяется по `restart`
 
-`.env` примонтирован в контейнер файлом (`./server/.env:/app/.env:ro`), поэтому:
+`.env` примонтирован в контейнер файлом (`./server/.env:/app/.env:ro`) и читается
+приложением через Dotenv из `/app/.env`:
 ```bash
 nano server/.env
-docker compose -p raspredelenie -f docker-compose.shared.yml restart
+docker compose -p raspredelenie -f docker-compose.shared.yml restart app
 ```
-достаточно, **пересборка не нужна**. (php-fpm с `clear_env=yes` не пробрасывает
-переменные внутрь PHP — приложение читает именно этот файл.)
-После обновления **кода** — уже с пересборкой: `up -d --build`.
+достаточно, **пересборка не нужна**.
+
+> **Почему раньше «залипало».** В compose был `env_file: ./server/.env`.
+> Переменные из `env_file` бэкаются в окружение контейнера **в момент его
+> создания**, а `docker compose restart` их не перечитывает; `Dotenv::createImmutable`
+> при этом не перезаписывает уже заданные `$_ENV`. Итог: после правки `.env`
+> контейнер продолжал работать на старом `AMO_CLIENT_ID`/секрете (симптом amo:
+> `Check the client_id parameter`), и приходилось делать `up -d --force-recreate`.
+> Теперь `env_file` убран — `.env` монтируется только файлом и является источником
+> истины для прикладных переменных, поэтому обычного `restart` достаточно.
+>
+> Если по какой-то причине `env_file` вернут — правки `.env` применять так:
+> `docker compose -p raspredelenie -f docker-compose.shared.yml up -d --force-recreate app`.
+
+После обновления **кода** — с пересборкой: `up -d --build`.
 
 ## 6. Права на хранилище
 
