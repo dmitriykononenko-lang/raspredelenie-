@@ -26,7 +26,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.1.4';
+        var WIDGET_VERSION = '1.1.5';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -1044,45 +1044,72 @@ define(['jquery', 'underscore'], function($, _) {
                 $body.html('<div class="rd-empty">' + _.escape(self.i18n('report.deputy_empty')) + '</div>');
                 return;
             }
-            var users = getUsers();
-            var nameOf = function(id) { var u = _.find(users, function(x){ return String(x.id) === String(id); }); return u ? u.name : ('#' + id); };
+            // Ждём активный ростер (иначе имена менеджеров не резолвятся) + карту этапов.
+            ensureUsers(function(users) {
+                var nameOf = function(id) { if (id == null || id === '') return '—'; var u = _.find(users, function(x){ return String(x.id) === String(id); }); return u ? u.name : ('#' + id); };
+                var stageName = function(id) { return (id != null && _stageNames[String(id)]) ? _stageNames[String(id)] : (id || '—'); };
+                loadStageNames();
 
-            if (kind === 'dist') {
-                apiRequest('/api/log', null, 'GET').done(function(resp) {
-                    var rows = (resp && (resp.log || resp.items || resp)) || [];
-                    if (!rows.length) { $body.html('<div class="rd-empty">' + _.escape(self.i18n('report.empty')) + '</div>'); return; }
-                    var h = ['<div class="rd-thead" style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr 1.4fr .8fr;gap:12px"><div>' +
-                             _.escape(self.i18n('report.col_date')) + '</div><div>' + _.escape(self.i18n('report.col_result')) + '</div><div>' +
-                             _.escape(self.i18n('status.col_manager')) + '</div><div>' + _.escape(self.i18n('report.col_stage')) + '</div><div>' +
-                             _.escape(self.i18n('report.col_deal')) + '</div></div>'];
-                    _.each(rows, function(l) {
-                        h.push('<div class="rd-row" style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr 1.4fr .8fr;gap:12px;align-items:center;font-size:13px">' +
-                          '<div class="rd-mono" style="color:#586173;font-size:12px">' + _.escape(fmtTs(l.ts || l.time || l.date)) + '</div>' +
-                          '<div><span class="rd-badge rd-badge--algo">' + _.escape(l.result || l.status || '—') + '</span></div>' +
-                          '<div style="font-weight:700">' + _.escape(l.user_id ? nameOf(l.user_id) : '—') + '</div>' +
-                          '<div style="color:#586173">' + _.escape(l.stage_id || l.stage || '—') + '</div>' +
-                          '<div class="rd-mono" style="font-size:12.5px">' + _.escape(l.lead_id || l.deal || '—') + '</div></div>');
+                if (kind === 'dist') {
+                    apiRequest('/api/log?limit=200', null, 'GET').done(function(resp) {
+                        var rows = (resp && (resp.log || resp.items || resp)) || [];
+                        if (!rows.length) { $body.html('<div class="rd-empty">' + _.escape(self.i18n('report.empty')) + '</div>'); return; }
+                        var h = ['<div class="rd-thead" style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr 1.4fr .8fr;gap:12px"><div>' +
+                                 _.escape(self.i18n('report.col_date')) + '</div><div>' + _.escape(self.i18n('report.col_result')) + '</div><div>' +
+                                 _.escape(self.i18n('status.col_manager')) + '</div><div>' + _.escape(self.i18n('report.col_stage')) + '</div><div>' +
+                                 _.escape(self.i18n('report.col_deal')) + '</div></div>'];
+                        _.each(rows, function(l) {
+                            // Хранилище пишет manager_id / reason (не user_id / result).
+                            var mid    = (l.manager_id != null) ? l.manager_id : l.user_id;
+                            var reason = l.reason || l.result || l.status || '';
+                            var label  = (typeof LOG_REASONS !== 'undefined' && LOG_REASONS[reason]) ? LOG_REASONS[reason] : (reason || '—');
+                            var ok     = (reason === 'assigned' || reason === 'history_match');
+                            var badge  = ok ? 'rd-badge--algo' : 'rd-badge--muted';
+                            h.push('<div class="rd-row" style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr 1.4fr .8fr;gap:12px;align-items:center;font-size:13px">' +
+                              '<div class="rd-mono" style="color:#586173;font-size:12px">' + _.escape(fmtTs(l.ts || l.time || l.date)) + '</div>' +
+                              '<div><span class="rd-badge ' + badge + '">' + _.escape(label) + '</span></div>' +
+                              '<div style="font-weight:700">' + _.escape(nameOf(mid)) + '</div>' +
+                              '<div style="color:#586173">' + _.escape(stageName(l.stage_id || l.stage)) + '</div>' +
+                              '<div class="rd-mono" style="font-size:12.5px">' + _.escape(l.lead_id || l.deal || '—') + '</div></div>');
+                        });
+                        $body.html(h.join(''));
+                    }).fail(function() { $body.html('<div class="rd-empty">' + _.escape(self.i18n('report.load_error')) + '</div>'); });
+                } else { // statusrep
+                    apiRequest('/api/status/history?limit=200', null, 'GET').done(function(resp) {
+                        var rows = (resp && resp.history) || [];
+                        if (!rows.length) { $body.html('<div class="rd-empty">' + _.escape(self.i18n('report.empty')) + '</div>'); return; }
+                        var h = ['<div class="rd-thead" style="display:grid;grid-template-columns:1.2fr 1.4fr 1fr 1fr;gap:12px"><div>' +
+                                 _.escape(self.i18n('report.col_date')) + '</div><div>' + _.escape(self.i18n('status.col_manager')) + '</div><div>' +
+                                 _.escape(self.i18n('report.col_was')) + '</div><div>' + _.escape(self.i18n('report.col_became')) + '</div></div>'];
+                        _.each(rows, function(l) {
+                            var on = !!l.online;
+                            h.push('<div class="rd-row" style="display:grid;grid-template-columns:1.2fr 1.4fr 1fr 1fr;gap:12px;align-items:center;font-size:13px">' +
+                              '<div class="rd-mono" style="color:#586173;font-size:12px">' + _.escape(fmtTs(l.ts)) + '</div>' +
+                              '<div style="font-weight:700">' + _.escape(nameOf(l.user_id)) + '</div>' +
+                              '<div style="color:#586173">' + _.escape(on ? self.i18n('status.off') : self.i18n('status.on')) + '</div>' +
+                              '<div style="color:' + (on ? '#1a7a4a' : '#98a1b3') + '">' + _.escape(on ? self.i18n('status.on') : self.i18n('status.off')) + '</div></div>');
+                        });
+                        $body.html(h.join(''));
+                    }).fail(function() { $body.html('<div class="rd-empty">' + _.escape(self.i18n('report.load_error')) + '</div>'); });
+                }
+            });
+        }
+
+        // Названия этапов воронок: stage_id → имя (для отчёта). Тянем один раз.
+        var _stageNames = {};
+        var _stageNamesLoaded = false;
+        function loadStageNames() {
+            if (_stageNamesLoaded) return;
+            _stageNamesLoaded = true;
+            $.ajax({ url: '/api/v4/leads/pipelines', type: 'GET', dataType: 'json' })
+                .done(function(resp) {
+                    var pls = (resp && resp._embedded && resp._embedded.pipelines) || [];
+                    _.each(pls, function(p) {
+                        var st = (p._embedded && p._embedded.statuses) || [];
+                        _.each(st, function(s) { if (s && s.id != null) _stageNames[String(s.id)] = s.name || String(s.id); });
                     });
-                    $body.html(h.join(''));
-                }).fail(function() { $body.html('<div class="rd-empty">' + _.escape(self.i18n('report.load_error')) + '</div>'); });
-            } else { // statusrep
-                apiRequest('/api/status/history?limit=200', null, 'GET').done(function(resp) {
-                    var rows = (resp && resp.history) || [];
-                    if (!rows.length) { $body.html('<div class="rd-empty">' + _.escape(self.i18n('report.empty')) + '</div>'); return; }
-                    var h = ['<div class="rd-thead" style="display:grid;grid-template-columns:1.2fr 1.4fr 1fr 1fr;gap:12px"><div>' +
-                             _.escape(self.i18n('report.col_date')) + '</div><div>' + _.escape(self.i18n('status.col_manager')) + '</div><div>' +
-                             _.escape(self.i18n('report.col_was')) + '</div><div>' + _.escape(self.i18n('report.col_became')) + '</div></div>'];
-                    _.each(rows, function(l) {
-                        var on = !!l.online;
-                        h.push('<div class="rd-row" style="display:grid;grid-template-columns:1.2fr 1.4fr 1fr 1fr;gap:12px;align-items:center;font-size:13px">' +
-                          '<div class="rd-mono" style="color:#586173;font-size:12px">' + _.escape(fmtTs(l.ts)) + '</div>' +
-                          '<div style="font-weight:700">' + _.escape(nameOf(l.user_id)) + '</div>' +
-                          '<div style="color:#586173">' + _.escape(on ? self.i18n('status.off') : self.i18n('status.on')) + '</div>' +
-                          '<div style="color:' + (on ? '#1a7a4a' : '#98a1b3') + '">' + _.escape(on ? self.i18n('status.on') : self.i18n('status.off')) + '</div></div>');
-                    });
-                    $body.html(h.join(''));
-                }).fail(function() { $body.html('<div class="rd-empty">' + _.escape(self.i18n('report.load_error')) + '</div>'); });
-            }
+                })
+                .fail(function() {});
         }
 
         function fmtTs(ts) {
