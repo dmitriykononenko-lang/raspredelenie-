@@ -26,7 +26,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.1.0';
+        var WIDGET_VERSION = '1.1.1';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -135,6 +135,7 @@ define(['jquery', 'underscore'], function($, _) {
             var $row = $rulesContainer.find('.dist-rule-row').last();
 
             loadPipelinesIntoRow($row, rule);
+            recalcRuleIndexes($container);
         }
 
         function buildRuleRowHtml(rule) {
@@ -413,6 +414,81 @@ define(['jquery', 'underscore'], function($, _) {
             return rules;
         }
 
+        // ─── Сохранение правил напрямую в бэкенд ──────────────────────────────
+        // Кнопка «Сохранить» amoCRM в модалке виджета появляется только при
+        // изменении ЕГО собственных полей и не реагирует на наш редактор правил,
+        // поэтому правила сохраняем сами: своя кнопка → PUT /api/settings.
+        // Источник истины — бэкенд (rules используются DistributionService).
+        function buildSettingsPayload($scope) {
+            var cur = getSettings();
+            var $url = $scope.find('.js-server-url');
+            var $met = $scope.find('.js-dist-method');
+            return {
+                server_url:          $url.length ? $.trim($url.val()) : (cur.server_url || ''),
+                security_key:        cur.security_key || '',
+                distribution_method: $met.length ? ($met.val() || 'round_robin') : (cur.distribution_method || 'round_robin'),
+                rules:               collectRules($scope)
+            };
+        }
+
+        function saveRulesToBackend($scope, $btn) {
+            var payload = buildSettingsPayload($scope);
+            var unsaved = $scope.find('.dist-rule-row').length - payload.rules.length;
+            if ($btn && $btn.length) $btn.prop('disabled', true).data('label', $btn.text()).text('Сохраняем…');
+
+            // Держим amo-параметры в синхроне (не обязательно для работы).
+            try {
+                self.params = $.extend(self.params || {}, {
+                    server_url:          payload.server_url,
+                    distribution_method: payload.distribution_method,
+                    rules:               payload.rules
+                });
+                if (typeof self.set_settings === 'function') {
+                    self.set_settings({
+                        server_url:          payload.server_url,
+                        distribution_method: payload.distribution_method,
+                        rules:               payload.rules
+                    });
+                }
+            } catch (e) {}
+
+            return apiRequest('/api/settings', {
+                account_id: getAccountId(),
+                settings:   payload
+            }, 'PUT').done(function() {
+                var msg = 'Правила сохранены (' + payload.rules.length + ')';
+                if (unsaved > 0) msg += '. Пропущено ' + unsaved + ' — без воронки или без менеджеров';
+                if (rdRoot() && $.contains(rdRoot()[0], $scope[0])) toast(msg); else notify(msg, unsaved > 0 ? 'info' : 'success');
+                var $st = $scope.find('.js-rules-status');
+                if ($st.length) $st.text('Сохранено ' + new Date().toLocaleTimeString('ru-RU') + '. Правил: ' + payload.rules.length).css('color', '#1a7a4a');
+            }).fail(function(xhr) {
+                console.error('[DealDist] save settings failed', xhr);
+                notify('Не удалось сохранить правила. Проверьте, что сервер доступен.', 'error');
+                var $st = $scope.find('.js-rules-status');
+                if ($st.length) $st.text('Ошибка сохранения').css('color', '#d22730');
+            }).always(function() {
+                if ($btn && $btn.length) $btn.prop('disabled', false).text($btn.data('label') || 'Сохранить правила');
+            });
+        }
+
+        // Загрузить актуальные настройки с бэкенда (там источник истины),
+        // с фолбэком на amo-параметры, если бэкенд недоступен.
+        function loadSettingsFromBackend() {
+            var d = $.Deferred();
+            apiRequest('/api/settings?account_id=' + encodeURIComponent(getAccountId()), null, 'GET')
+                .done(function(resp) {
+                    var s = $.extend(true, {}, DEFAULT_SETTINGS, getSettings());
+                    if (resp && typeof resp === 'object') {
+                        if (resp.server_url)          s.server_url          = resp.server_url;
+                        if (resp.distribution_method) s.distribution_method = resp.distribution_method;
+                        if (_.isArray(resp.rules))    s.rules               = resp.rules;
+                    }
+                    d.resolve(s, true);
+                })
+                .fail(function() { d.resolve(getSettings(), false); });
+            return d.promise();
+        }
+
         // ─── Digital Pipeline ─────────────────────────────────────────────────
         function handleDpEvent(eventData, dpSettings) {
             var settings = getSettings();
@@ -466,7 +542,7 @@ define(['jquery', 'underscore'], function($, _) {
                 if (!base) return;
                 var link = document.createElement('link');
                 link.rel  = 'stylesheet';
-                link.href = base.replace(/\/$/, '') + '/css/widget.css';
+                link.href = base.replace(/\/$/, '') + '/css/widget.css?v=' + WIDGET_VERSION;
                 link.setAttribute('data-dist-css', '1');
                 document.head.appendChild(link);
             } catch (e) {}
@@ -535,7 +611,12 @@ define(['jquery', 'underscore'], function($, _) {
                 '      <h4 class="dist-section__title">Правила распределения</h4>',
                 '      <p class="dist-hint">Каждое правило задаёт, на каком этапе воронки и каким менеджерам назначать сделки.</p>',
                 '      <div class="js-rules-list dist-rules-list"></div>',
-                '      <button type="button" class="js-add-rule dist-btn dist-btn--primary">+ Добавить правило</button>',
+                '      <div class="dist-rules-actions">',
+                '        <button type="button" class="js-add-rule dist-btn dist-btn--secondary">+ Добавить правило</button>',
+                '        <button type="button" class="js-save-rules dist-btn dist-btn--primary">Сохранить правила</button>',
+                '        <span class="js-rules-status dist-hint"></span>',
+                '      </div>',
+                '      <p class="dist-hint">Правила сохраняются на сервере сразу по кнопке — кнопка «Сохранить» amoCRM для них не нужна. Правило срабатывает, когда сделка попадает на выбранный этап (на этапе должно стоять действие «Распределение» в Digital Pipeline).</p>',
                 '    </div>',
 
                 '  </div>',
@@ -593,7 +674,25 @@ define(['jquery', 'underscore'], function($, _) {
                 renderStatusTab($container);
             });
 
-            bindSettingsEvents($container, settings);
+            // Правила: подтягиваем актуальные с бэкенда (там источник истины),
+            // затем биндим редактор. Пока грузятся — используем amo-параметры.
+            var $rulesPanel = $container.find('[data-panel="rules"]');
+            $rulesPanel.find('.js-rules-list').html('<p class="dist-hint">Загрузка правил…</p>');
+            loadSettingsFromBackend().done(function(s, fromBackend) {
+                $rulesPanel.find('.js-rules-list').empty();
+                $rulesPanel.find('.js-dist-method').val(s.distribution_method || 'round_robin');
+                if (s.server_url) $rulesPanel.find('.js-server-url').val(s.server_url);
+                bindSettingsEvents($container, s);
+                recalcRuleIndexes($container);
+                $container.data('rulesLoaded', true);
+                if (!fromBackend) {
+                    $rulesPanel.find('.js-rules-status').text('Сервер недоступен — показаны локальные настройки').css('color', '#d22730');
+                }
+            });
+
+            $container.on('click', '.js-save-rules', function() {
+                saveRulesToBackend($container, $(this));
+            });
 
             // Вкладка «Сотрудники» открыта по умолчанию — грузим сразу.
             renderStatusTab($container);
@@ -747,8 +846,9 @@ define(['jquery', 'underscore'], function($, _) {
                 '    <div class="rd-brand"><div class="rd-brand__mk">KO<i>·</i>AGENCY</div>',
                 '      <div class="rd-brand__sub">' + _.escape(self.i18n('advanced.title')) + '</div></div>',
                 '    <div class="rd-toptabs js-toptabs" style="display:none">',
-                '      <button class="rd-toptab rd-toptab--on" data-tab="templates">' + _.escape(self.i18n('nav.templates')) + '</button>',
-                '      <button class="rd-toptab" data-tab="hours">' + _.escape(self.i18n('nav.worktime')) + '</button>',
+                '      <button class="rd-toptab rd-toptab--on" data-tab="rules">Правила</button>',
+                '      <button class="rd-toptab" data-tab="schedules">Расписания</button>',
+                '      <button class="rd-toptab" data-tab="templates">' + _.escape(self.i18n('nav.templates')) + '</button>',
                 '    </div>',
                 '  </div>',
                 '  <div class="rd-body">',
@@ -782,7 +882,7 @@ define(['jquery', 'underscore'], function($, _) {
             var $panel = $mount.find('.js-panel');
             if (key === 'settings') {
                 $tabs.css('display', '');
-                renderSettingsSurface($mount, $panel, $mount.data('settingsTab') || 'templates');
+                renderSettingsSurface($mount, $panel, $mount.data('settingsTab') || 'rules');
             } else {
                 $tabs.css('display', 'none');
                 if (key === 'dist')            renderReportPanel($mount, $panel, 'dist');
@@ -978,7 +1078,11 @@ define(['jquery', 'underscore'], function($, _) {
             $mount.data('settingsTab', tab);
             $mount.find('.rd-toptab').removeClass('rd-toptab--on');
             $mount.find('.rd-toptab[data-tab="' + tab + '"]').addClass('rd-toptab--on');
-            if (tab === 'hours') {
+            if (tab === 'rules') {
+                renderRulesPanel($mount, $panel);
+            } else if (tab === 'schedules') {
+                renderSchedulesPanel($mount, $panel);
+            } else if (tab === 'hours') {
                 $panel.html(
                     '<div class="rd-h1">' + _.escape(self.i18n('nav.worktime')) + '</div>' +
                     '<div class="rd-desc">' + _.escape(self.i18n('hours.desc')) + '</div>' +
@@ -987,6 +1091,84 @@ define(['jquery', 'underscore'], function($, _) {
             } else {
                 renderTemplatesPanel($mount, $panel);
             }
+        }
+
+        // ── Панель: Правила распределения (полная страница) ─────────────────────
+        // Тот же редактор правил, что и в модалке amoМаркета, но на большой
+        // странице и с сохранением напрямую в бэкенд.
+        function renderRulesPanel($mount, $panel) {
+            $panel.html(
+                '<div class="rd-h1">Правила распределения</div>' +
+                '<div class="rd-desc">Правило задаёт воронку, этап и менеджеров, между которыми делятся сделки. ' +
+                'Срабатывает, когда сделка попадает на этап, где в Digital Pipeline стоит действие «Распределение».</div>' +
+                '<div class="rd-card dist-settings dist-settings--adv js-rules-scope">' +
+                '  <div class="dist-section">' +
+                '    <div class="dist-row-2col">' +
+                '      <div class="dist-field">' +
+                '        <label class="dist-label">Метод распределения</label>' +
+                '        <select class="js-dist-method dist-select">' +
+                '          <option value="round_robin">Round Robin (по очереди)</option>' +
+                '          <option value="workload">По загруженности</option>' +
+                '        </select>' +
+                '      </div>' +
+                '      <div class="dist-field">' +
+                '        <label class="dist-label">URL сервера</label>' +
+                '        <input type="text" class="js-server-url dist-input" placeholder="' + DEFAULT_SERVER_URL + '" />' +
+                '        <small class="dist-hint">Пусто = адрес по умолчанию.</small>' +
+                '      </div>' +
+                '    </div>' +
+                '  </div>' +
+                '  <div class="dist-section">' +
+                '    <div class="js-rules-list dist-rules-list"><p class="dist-hint">Загрузка правил…</p></div>' +
+                '    <div class="dist-rules-actions">' +
+                '      <button type="button" class="js-add-rule dist-btn dist-btn--secondary">+ Добавить правило</button>' +
+                '      <button type="button" class="js-save-rules dist-btn dist-btn--primary">Сохранить правила</button>' +
+                '      <span class="js-rules-status dist-hint"></span>' +
+                '    </div>' +
+                '  </div>' +
+                '</div>'
+            );
+
+            var $scope = $panel.find('.js-rules-scope');
+            loadSettingsFromBackend().done(function(s, fromBackend) {
+                $scope.find('.js-rules-list').empty();
+                $scope.find('.js-dist-method').val(s.distribution_method || 'round_robin');
+                if (s.server_url) $scope.find('.js-server-url').val(s.server_url);
+                bindSettingsEvents($scope, s);
+                recalcRuleIndexes($scope);
+                if (!s.rules || !s.rules.length) {
+                    $scope.find('.js-rules-status').text('Правил пока нет — добавьте первое').css('color', '#8b95a7');
+                }
+                if (!fromBackend) {
+                    $scope.find('.js-rules-status').text('Сервер недоступен — показаны локальные настройки').css('color', '#d22730');
+                }
+            });
+
+            $scope.on('click', '.js-save-rules', function() {
+                saveRulesToBackend($scope, $(this));
+            });
+        }
+
+        // ── Панель: Расписания (полная страница) — переиспользуем редактор ──────
+        function renderSchedulesPanel($mount, $panel) {
+            $panel.html(
+                '<div class="rd-h1">Рабочие расписания</div>' +
+                '<div class="rd-desc">Рабочие часы менеджеров. Учитываются, если в правиле включено «Учитывать рабочее расписание»: вне графика менеджер сделки не получает.</div>' +
+                '<div class="rd-card dist-settings dist-settings--adv js-sched-scope">' +
+                '  <div class="dist-tab-panel" data-panel="schedules">' +
+                '    <div class="dist-section">' +
+                '      <div class="js-schedules-list dist-schedules-list"></div>' +
+                '      <div class="dist-schedule-add-row">' +
+                '        <select class="js-schedule-user-select dist-select dist-select--inline">' +
+                '          <option value="">— выберите менеджера —</option>' +
+                '        </select>' +
+                '        <button type="button" class="js-add-schedule dist-btn dist-btn--secondary">+ Добавить расписание</button>' +
+                '      </div>' +
+                '    </div>' +
+                '  </div>' +
+                '</div>'
+            );
+            renderSchedulesTab($panel.find('.js-sched-scope'));
         }
 
         // ── Панель: Шаблоны ─────────────────────────────────────────────────────
@@ -998,7 +1180,7 @@ define(['jquery', 'underscore'], function($, _) {
             $panel.html(
                 '<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">' +
                   '<div><div class="rd-h1">' + _.escape(self.i18n('templates.title')) + '</div>' +
-                  '<div class="rd-desc">' + _.escape(self.i18n('templates.desc')) + '</div></div>' +
+                  '<div class="rd-desc">' + _.escape(self.i18n('templates.desc')) + ' Шаблоны — заготовки; само распределение выполняется по правилам на вкладке «Правила».</div></div>' +
                   '<button class="rd-btn rd-btn--primary js-tpl-add">+ ' + _.escape(self.i18n('templates.add')) + '</button></div>' +
                 '<div class="js-tpl-body" style="display:flex;flex-direction:column;gap:10px;margin-top:18px">' +
                   '<div style="color:#8b95a7;padding:14px">' + _.escape(self.i18n('common.loading')) + '</div></div>'
@@ -1562,92 +1744,41 @@ define(['jquery', 'underscore'], function($, _) {
                 return true;
             }
 
-            self.params.server_url          = $.trim($container.find('.js-server-url').val());
-            self.params.distribution_method = $container.find('.js-dist-method').val();
-            self.params.rules               = collectRules($container);
-
-            // Всегда сохраняем правила в бэкенд. apiRequest подставит вшитый
-            // DEFAULT_SERVER_URL, если поле URL сервера оставили пустым — иначе
-            // правила не попадали бы в бэкенд и распределение молча не работало.
-            apiRequest('/api/settings', {
-                account_id: getAccountId(),
-                settings:   self.params
-            }, 'PUT');
+            // Если открыта вкладка «Правила» — сохраняем и правила (чистым
+            // объектом, без служебных полей amo вроде active/path/cdn_path).
+            // Если правил в DOM нет (вкладка не открывалась) — ничего не шлём,
+            // чтобы не затереть на сервере правила пустым списком.
+            if ($container.data('rulesLoaded')) {
+                saveRulesToBackend($container, null);
+            }
 
             return true;
         };
 
-        /** Digital Pipeline — settings panel */
-        self.dpSettings = function() {
-            var settings = getSettings();
-
-            return {
-                render: function($container, dpSettings) {
-                    $container.html([
-                        '<div class="dist-dp-settings">',
-                        '  <div class="dist-field">',
-                        '    <label class="dist-label">Менеджеры для этого этапа</label>',
-                        '    <div class="js-dp-managers-list dist-managers-list"></div>',
-                        '    <button type="button" class="js-dp-add-manager dist-btn dist-btn--secondary dist-btn--sm">',
-                        '      + Добавить менеджера',
-                        '    </button>',
-                        '  </div>',
-                        '  <div class="dist-field">',
-                        '    <label class="dist-label">',
-                        '      <input type="checkbox" class="js-dp-check-history" ',
-                                    ((dpSettings && dpSettings.check_history) ? 'checked' : '') + ' />',
-                        '      Учитывать историю контакта/компании',
-                        '    </label>',
-                        '  </div>',
-                        '  <div class="dist-field">',
-                        '    <label class="dist-label">',
-                        '      <input type="checkbox" class="js-dp-check-schedule" ',
-                                    ((dpSettings && dpSettings.check_schedule) ? 'checked' : '') + ' />',
-                        '      Учитывать рабочее расписание',
-                        '    </label>',
-                        '  </div>',
+        /** Digital Pipeline — панель настроек действия на этапе.
+         *  amoCRM вызывает колбэк с jQuery-контейнером модалки действия.
+         *  Менеджеры/условия задаются в правилах (Настройки → Распределение →
+         *  Правила): правило само привязано к воронке+этапу, а действие на
+         *  этапе лишь включает вебхук. Поэтому здесь — понятная подсказка,
+         *  а не второй, дублирующий редактор. */
+        self.dpSettings = function($el) {
+            try {
+                var $c = ($el && $el.jquery) ? $el : $($el);
+                if ($c && $c.length && !$c.find('.dist-dp-hint').length) {
+                    var code = (self.params && self.params.widget_code) || '';
+                    var href = code ? '/settings/widgets/' + code + '/' : '/settings/widgets/';
+                    $c.append(
+                        '<div class="dist-dp-hint" style="font-size:13px;line-height:1.45;color:#3d4657;padding:10px 0">' +
+                        '<b>Распределение сделок</b><br>' +
+                        'Когда сделка попадает на этот этап, сервер выберет менеджера по правилу для этой воронки и этапа. ' +
+                        'Менеджеры, метод и фильтры задаются в ' +
+                        '<a href="' + href + '" target="_blank" style="color:#2b7de9">Настройки → Распределение сделок → Правила</a>. ' +
+                        'Если правила для этапа нет — сделка останется без изменений (см. «Отчёт по распределениям»).' +
                         '</div>'
-                    ].join(''));
-
-                    // Render saved managers
-                    _.each((dpSettings && dpSettings.managers) || [], function(manager) {
-                        addManagerRow({ find: function(s) { return $container.find('.js-dp-managers-list'); } }, manager);
-                    });
-
-                    // Replace addManagerRow helper for dp context
-                    $container.on('click', '.js-dp-add-manager', function() {
-                        var users = getUsers();
-                        var options = _.map(users, function(u) {
-                            return '<option value="' + u.id + '">' + _.escape(u.name) + '</option>';
-                        }).join('');
-                        $container.find('.js-dp-managers-list').append(
-                            '<div class="dist-manager-row">' +
-                            '<select class="js-dp-manager-select dist-select dist-select--inline">' +
-                            '<option value="">— выберите —</option>' + options +
-                            '</select>' +
-                            '<button type="button" class="js-dp-remove-manager dist-btn dist-btn--danger dist-btn--sm">&#x2715;</button>' +
-                            '</div>'
-                        );
-                    });
-
-                    $container.on('click', '.js-dp-remove-manager', function() {
-                        $(this).closest('.dist-manager-row').remove();
-                    });
-                },
-
-                collect: function($container) {
-                    var managers = [];
-                    $container.find('.js-dp-manager-select').each(function() {
-                        var id = $(this).val();
-                        if (id) managers.push({ id: id });
-                    });
-                    return {
-                        managers:       managers,
-                        check_history:  $container.find('.js-dp-check-history').is(':checked'),
-                        check_schedule: $container.find('.js-dp-check-schedule').is(':checked')
-                    };
+                    );
                 }
-            };
+            } catch (e) {}
+            return true;
         };
 
         /** Digital Pipeline — action triggered on event */

@@ -7,10 +7,13 @@
     "logo": "images/logo.png",
     "logo_medium": "images/logo_medium.png",
     "cover": "images/cover.jpg",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "interface_version": 2,
     "init_once": false,
-    "locale": ["ru", "en"],
+    "locale": [
+      "ru",
+      "en"
+    ],
     "installation": true,
     "oauth": "Y",
     "digital_pipeline": true,
@@ -34,7 +37,9 @@
         "light": "images/menu_light.svg",
         "dark": "images/menu_dark.svg"
       },
-      "sort": { "after": "leads" }
+      "sort": {
+        "after": "leads"
+      }
     }
   },
   "settings": {
@@ -67,6 +72,10 @@
     }
   },
   "free": "N",
-  "countries": ["RU", "KZ", "BY"],
+  "countries": [
+    "RU",
+    "KZ",
+    "BY"
+  ],
   "category": "automation"
 }
