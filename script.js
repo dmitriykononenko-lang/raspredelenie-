@@ -26,7 +26,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.1.1';
+        var WIDGET_VERSION = '1.1.2';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -564,7 +564,14 @@ define(['jquery', 'underscore'], function($, _) {
             if (!$container) return false;
             $settingsContainer = $container;
 
-            var settings = getSettings();
+            // Модалка карточки amoМаркета намеренно компактная: здесь только
+            // быстрый ростер участия и расписания. Правила и История (Отчёт по
+            // распределениям) живут на полной странице «Распределение сделок»
+            // (Настройки → Распределение сделок) — там больше места.
+            var settingsUrl = (function() {
+                var code = (self.params && self.params.widget_code) || getSettings().widget_code || '';
+                return code ? '/settings/widgets/' + code + '/' : '/settings/widgets/';
+            })();
 
             $container.html([
                 '<div class="dist-settings">',
@@ -572,9 +579,7 @@ define(['jquery', 'underscore'], function($, _) {
                 // ── Tab navigation ──────────────────────────────────────────
                 '  <div class="dist-tabs">',
                 '    <button type="button" class="dist-tab dist-tab--active" data-tab="status">Сотрудники</button>',
-                '    <button type="button" class="dist-tab" data-tab="rules">Правила</button>',
                 '    <button type="button" class="dist-tab" data-tab="schedules">Расписания</button>',
-                '    <button type="button" class="dist-tab" data-tab="log">История</button>',
                 '  </div>',
 
                 // ── Tab: Сотрудники (кто участвует в распределении) ─────────
@@ -584,41 +589,13 @@ define(['jquery', 'underscore'], function($, _) {
                 '        <h4 class="dist-section__title" style="margin:0;">Сотрудники в распределении</h4>',
                 '        <button type="button" class="js-refresh-status dist-btn dist-btn--secondary dist-btn--sm">&#x21bb; Обновить</button>',
                 '      </div>',
-                '      <p class="dist-hint">Тумблер справа задаёт, участвует ли сотрудник в распределении. Выключенным сделки не назначаются. Список берётся из пользователей amoCRM.</p>',
+                '      <p class="dist-hint">Тумблер справа задаёт, участвует ли сотрудник в распределении. Выключенным сделки не назначаются. Показаны только активные пользователи amoCRM.</p>',
                 '      <div class="js-status-body dist-status-body"><p class="dist-hint">Загрузка...</p></div>',
                 '    </div>',
-                '  </div>',
-
-                // ── Tab: Rules ──────────────────────────────────────────────
-                '  <div class="dist-tab-panel" data-panel="rules" style="display:none;">',
-
                 '    <div class="dist-section">',
-                '      <div class="dist-field">',
-                '        <label class="dist-label">URL сервера <span class="dist-required">*</span></label>',
-                '        <input type="text" class="js-server-url dist-input" placeholder="https://your-server.com" value="' + _.escape(settings.server_url || '') + '" />',
-                '        <small class="dist-hint">Адрес бэкенд-сервиса, обрабатывающего распределение сделок.</small>',
-                '      </div>',
-                '      <div class="dist-field">',
-                '        <label class="dist-label">Метод распределения</label>',
-                '        <select class="js-dist-method dist-select">',
-                '          <option value="round_robin"' + (settings.distribution_method === 'round_robin' ? ' selected' : '') + '>Round Robin (по очереди)</option>',
-                '          <option value="workload"'   + (settings.distribution_method === 'workload'    ? ' selected' : '') + '>По загруженности</option>',
-                '        </select>',
-                '      </div>',
+                '      <p class="dist-hint">Правила распределения и история — на полной странице: ',
+                '        <a href="' + settingsUrl + '" target="_blank" style="color:#2b7de9">Настройки → Распределение сделок</a>.</p>',
                 '    </div>',
-
-                '    <div class="dist-section">',
-                '      <h4 class="dist-section__title">Правила распределения</h4>',
-                '      <p class="dist-hint">Каждое правило задаёт, на каком этапе воронки и каким менеджерам назначать сделки.</p>',
-                '      <div class="js-rules-list dist-rules-list"></div>',
-                '      <div class="dist-rules-actions">',
-                '        <button type="button" class="js-add-rule dist-btn dist-btn--secondary">+ Добавить правило</button>',
-                '        <button type="button" class="js-save-rules dist-btn dist-btn--primary">Сохранить правила</button>',
-                '        <span class="js-rules-status dist-hint"></span>',
-                '      </div>',
-                '      <p class="dist-hint">Правила сохраняются на сервере сразу по кнопке — кнопка «Сохранить» amoCRM для них не нужна. Правило срабатывает, когда сделка попадает на выбранный этап (на этапе должно стоять действие «Распределение» в Digital Pipeline).</p>',
-                '    </div>',
-
                 '  </div>',
 
                 // ── Tab: Schedules ──────────────────────────────────────────
@@ -636,19 +613,6 @@ define(['jquery', 'underscore'], function($, _) {
                 '    </div>',
                 '  </div>',
 
-                // ── Tab: Log ────────────────────────────────────────────────
-                '  <div class="dist-tab-panel" data-panel="log" style="display:none;">',
-                '    <div class="dist-section">',
-                '      <div class="dist-log-toolbar">',
-                '        <h4 class="dist-section__title" style="margin:0;">История распределений</h4>',
-                '        <button type="button" class="js-refresh-log dist-btn dist-btn--secondary dist-btn--sm">&#x21bb; Обновить</button>',
-                '      </div>',
-                '      <div class="js-log-body dist-log-body">',
-                '        <p class="dist-hint">Нажмите «Обновить» для загрузки истории.</p>',
-                '      </div>',
-                '    </div>',
-                '  </div>',
-
                 '</div>'
             ].join(''));
 
@@ -662,7 +626,6 @@ define(['jquery', 'underscore'], function($, _) {
 
                 if (tab === 'status')    renderStatusTab($container);
                 if (tab === 'schedules') renderSchedulesTab($container);
-                if (tab === 'log')       renderLogTab($container);
             });
 
             // Тумблер «в распределении / вне» прямо в настройках.
@@ -672,26 +635,6 @@ define(['jquery', 'underscore'], function($, _) {
             });
             $container.on('click', '.js-refresh-status', function() {
                 renderStatusTab($container);
-            });
-
-            // Правила: подтягиваем актуальные с бэкенда (там источник истины),
-            // затем биндим редактор. Пока грузятся — используем amo-параметры.
-            var $rulesPanel = $container.find('[data-panel="rules"]');
-            $rulesPanel.find('.js-rules-list').html('<p class="dist-hint">Загрузка правил…</p>');
-            loadSettingsFromBackend().done(function(s, fromBackend) {
-                $rulesPanel.find('.js-rules-list').empty();
-                $rulesPanel.find('.js-dist-method').val(s.distribution_method || 'round_robin');
-                if (s.server_url) $rulesPanel.find('.js-server-url').val(s.server_url);
-                bindSettingsEvents($container, s);
-                recalcRuleIndexes($container);
-                $container.data('rulesLoaded', true);
-                if (!fromBackend) {
-                    $rulesPanel.find('.js-rules-status').text('Сервер недоступен — показаны локальные настройки').css('color', '#d22730');
-                }
-            });
-
-            $container.on('click', '.js-save-rules', function() {
-                saveRulesToBackend($container, $(this));
             });
 
             // Вкладка «Сотрудники» открыта по умолчанию — грузим сразу.
@@ -704,47 +647,103 @@ define(['jquery', 'underscore'], function($, _) {
         function renderStatusTab($container) {
             var $body = $container.find('.js-status-body');
             if (!$body.length) return;
-            var users = getUsers();
-            if (!users.length) {
-                $body.html(emptyState(self.i18n('status.no_users')));
-                return;
-            }
             $body.html('<p class="dist-hint">' + _.escape(self.i18n('common.loading')) + '</p>');
-            apiRequest('/api/status', null, 'GET')
-                .done(function(resp) {
-                    renderStatusTable($body, users, (resp && resp.statuses) || {});
-                })
-                .fail(function() {
-                    renderStatusTable($body, users, {});
-                    notify(self.i18n('status.load_error'), 'error');
-                });
+            ensureUsers(function(users) {
+                if (!users || !users.length) {
+                    $body.html(emptyState(self.i18n('status.no_users')));
+                    return;
+                }
+                apiRequest('/api/status', null, 'GET')
+                    .done(function(resp) {
+                        renderStatusTable($body, users, (resp && resp.statuses) || {});
+                    })
+                    .fail(function() {
+                        renderStatusTable($body, users, {});
+                        notify(self.i18n('status.load_error'), 'error');
+                    });
+            });
         }
 
         // ═════════════════════════════════════════════════════════════════════
         //   Advanced settings — полностраничный виджет (сайдбар + модули)
         // ═════════════════════════════════════════════════════════════════════
 
-        function getUsers() {
-            var users = [];
+        // Кэш активного ростера. Источник истины — amo API /api/v4/users
+        // (там есть rights.is_active и rights.group_id). Фолбэк — constant('managers').
+        var _users = null, _usersLoading = false, _usersWaiters = [];
+
+        // Названия отделов amoCRM: id → имя (для человекочитаемых групп вместо GROUP_xxx).
+        function amoGroupNames() {
+            var map = {};
+            try {
+                var acc = AMOCRM.constant('account');
+                var groups = (acc && (acc.users_groups || acc.groups)) || [];
+                _.each(groups, function(g) { if (g && g.id != null) map[String(g.id)] = g.name || ''; });
+            } catch (e) {}
+            return map;
+        }
+
+        // Фолбэк-ростер из constant('managers') — только активные, если можно определить.
+        function getUsersFromConstant() {
+            var users = [], gmap = amoGroupNames();
             try {
                 var mgr = (window.AMOCRM && AMOCRM.constant && AMOCRM.constant('managers')) || null;
                 if (mgr && typeof mgr === 'object') {
                     _.each(mgr, function(u) {
                         if (!u || u.id == null) return;
+                        // Отсеиваем деактивированных, если признак присутствует.
+                        var active = u.active;
+                        if (active === false || active === 'N' || active === 0 || active === '0') return;
+                        var gid = (u.group_id != null) ? String(u.group_id) : null;
+                        var gname = (gid && gmap[gid]) ? gmap[gid] : '';
+                        // Не показываем служебные "GROUP_0"/"GROUP_xxx" как имя отдела.
+                        var rawG = u.group_name || u.group || '';
+                        if (!gname && rawG && !/^GROUP[_-]?\d+$/i.test(String(rawG))) gname = rawG;
                         users.push({
                             id:    parseInt(u.id, 10),
                             name:  u.option || u.name || ('#' + u.id),
-                            group: u.group_name || u.group || ''
+                            group: gname
                         });
                     });
                 }
             } catch (e) {}
-            if (!users.length && window.AMOCRM && AMOCRM.data && AMOCRM.data.users) {
-                _.each(AMOCRM.data.users, function(u) {
-                    users.push({ id: parseInt(u.id, 10), name: u.name || ('#' + u.id), group: '' });
-                });
-            }
             return users;
+        }
+
+        // Синхронный доступ (для мест, где нельзя ждать): кэш или фолбэк.
+        function getUsers() {
+            return (_users && _users.length) ? _users : getUsersFromConstant();
+        }
+
+        // Асинхронно гарантирует актуальный активный ростер и вызывает cb(users).
+        function ensureUsers(cb) {
+            if (_users) { if (cb) cb(_users); return; }
+            if (cb) _usersWaiters.push(cb);
+            if (_usersLoading) return;
+            _usersLoading = true;
+            var gmap = amoGroupNames();
+            $.ajax({ url: '/api/v4/users?limit=250', type: 'GET', dataType: 'json' })
+                .done(function(resp) {
+                    var list = (resp && resp._embedded && resp._embedded.users) || [];
+                    var arr = [];
+                    _.each(list, function(u) {
+                        // amo отдаёт и активных, и деактивированных — оставляем активных.
+                        if (u.rights && u.rights.is_active === false) return;
+                        var gid = (u.rights && u.rights.group_id != null) ? String(u.rights.group_id) : null;
+                        arr.push({
+                            id:    parseInt(u.id, 10),
+                            name:  u.name || ('#' + u.id),
+                            group: (gid && gmap[gid]) ? gmap[gid] : ''
+                        });
+                    });
+                    _users = arr.length ? arr : getUsersFromConstant();
+                })
+                .fail(function() { _users = getUsersFromConstant(); })
+                .always(function() {
+                    _usersLoading = false;
+                    var ws = _usersWaiters.slice(); _usersWaiters = [];
+                    _.each(ws, function(f) { try { f(_users); } catch (e) {} });
+                });
         }
 
         function currentUserId() {
@@ -872,6 +871,7 @@ define(['jquery', 'underscore'], function($, _) {
             ].join(''));
 
             bindAdvancedEvents($mount);
+            ensureUsers();          // прогреваем активный ростер заранее
             switchPanel($mount, 'status');
         }
 
@@ -928,25 +928,25 @@ define(['jquery', 'underscore'], function($, _) {
                    _.escape(self.i18n('common.loading')) + '</div></div></div>'
             ].join(''));
 
-            var users = getUsers();
             var $body = $panel.find('.js-status-body');
-            if (!users.length) { $body.html(emptyState(self.i18n('status.no_users'))); return; }
-
             var deptFilter = $mount.data('deptFilter') || '';
-            apiRequest('/api/status', null, 'GET')
-                .done(function(resp) {
-                    var st = (resp && resp.statuses) || {};
-                    $mount.data('statuses', st);
-                    renderStatusTableRd($body, users, st, deptFilter);
-                    syncSelfToggle($mount, st);
-                    updateActiveCount($mount);
-                })
-                .fail(function() {
-                    $mount.data('statuses', {});
-                    renderStatusTableRd($body, users, {}, deptFilter);
-                    updateActiveCount($mount);
-                    notify(self.i18n('status.load_error'), 'error');
-                });
+            ensureUsers(function(users) {
+                if (!users || !users.length) { $body.html(emptyState(self.i18n('status.no_users'))); return; }
+                apiRequest('/api/status', null, 'GET')
+                    .done(function(resp) {
+                        var st = (resp && resp.statuses) || {};
+                        $mount.data('statuses', st);
+                        renderStatusTableRd($body, users, st, deptFilter);
+                        syncSelfToggle($mount, st);
+                        updateActiveCount($mount);
+                    })
+                    .fail(function() {
+                        $mount.data('statuses', {});
+                        renderStatusTableRd($body, users, {}, deptFilter);
+                        updateActiveCount($mount);
+                        notify(self.i18n('status.load_error'), 'error');
+                    });
+            });
         }
 
         // Таблица сотрудников, сгруппированная по отделам (редизайн).
