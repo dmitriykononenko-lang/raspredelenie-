@@ -18,13 +18,23 @@ use Psr\Http\Message\ServerRequestInterface;
 /**
  * Handles incoming webhooks from AmoCRM.
  *
- * AmoCRM sends application/x-www-form-urlencoded POST requests.
- * Supported events:
- *   - leads[add][]      — new lead created
- *   - leads[status][]   — lead moved to another pipeline stage
+ * Поддерживаются ДВА формата:
  *
- * Webhook URL to configure in AmoCRM:
- *   POST https://your-server.com/webhook/leads
+ * 1) Digital Pipeline виджета (manifest.json → dp.webhook_url). amo шлёт POST
+ *    (form-urlencoded или JSON) вида:
+ *      event[type_code]=lead_appeared_in_status
+ *      event[data][id]=<lead_id>  event[data][status_id]=..  event[data][pipeline_id]=..
+ *      action[settings][widget][settings][...]   — то, что вернул dpSettings().save()
+ *      account_id=<id>  subdomain=<subdomain>
+ *    account_id берём из тела (fallback — ?account_id= в URL).
+ *
+ * 2) Классический вебхук аккаунта («Настройки → Интеграции → Webhooks»):
+ *      leads[add][]  /  leads[status][]  + обязательный ?account_id= в URL.
+ *
+ * Защита: если задан WIDGET_SECRET, проверяется заголовок X-Widget-Secret ИЛИ
+ * ?key=<secret> в URL. amo для DP-вебхука заголовок прислать не может, поэтому
+ * либо добавьте ?key= в dp.webhook_url манифеста, либо отключите проверку
+ * WEBHOOK_SECRET_ENFORCE=false (тогда вебхук открыт — полагаемся на неугадываемость URL).
  */
 class WebhookController
 {
@@ -32,33 +42,66 @@ class WebhookController
 
     public function handle(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
     {
-        $secret = $_ENV['WIDGET_SECRET'] ?? '';
-        if ($secret !== '') {
-            $headerSecret = $request->getHeaderLine('X-Widget-Secret');
-            if (!hash_equals($secret, $headerSecret)) {
+        $query = $request->getQueryParams();
+
+        $secret  = (string) ($_ENV['WIDGET_SECRET'] ?? '');
+        $enforce = filter_var($_ENV['WEBHOOK_SECRET_ENFORCE'] ?? 'true', FILTER_VALIDATE_BOOL);
+        if ($secret !== '' && $enforce) {
+            $provided = $request->getHeaderLine('X-Widget-Secret');
+            if ($provided === '') {
+                $provided = (string) ($query['key'] ?? '');
+            }
+            if (!hash_equals($secret, $provided)) {
+                $this->logger->warning('Webhook rejected: bad secret', ['ua' => $request->getHeaderLine('User-Agent')]);
                 return $this->json($response, ['error' => 'Unauthorized'], 401);
             }
         }
 
-        $body = $request->getParsedBody() ?? [];
+        $body = $this->parseBody($request);
 
-        // AmoCRM may nest data under leads[add] or leads[status]
-        $addedLeads    = $body['leads']['add']    ?? [];
-        $statusedLeads = $body['leads']['status'] ?? [];
+        $accountId  = (string) ($body['account_id'] ?? $query['account_id'] ?? '');
+        $dpSettings = [];
+        $leads      = [];
 
-        $leads = array_merge(
-            $this->normalizeLeads($addedLeads,    'add'),
-            $this->normalizeLeads($statusedLeads, 'status'),
-        );
+        // ── Формат 1: Digital Pipeline виджета ────────────────────────────────
+        if (isset($body['event']) && is_array($body['event'])) {
+            $data = (array) ($body['event']['data'] ?? []);
+            $typeCode = (string) ($body['event']['type_code'] ?? $body['event']['type'] ?? 'dp');
+            if (!empty($data['id'])) {
+                $leads[] = [
+                    'id'          => (int) $data['id'],
+                    'status_id'   => $data['status_id']   ?? null,
+                    'pipeline_id' => $data['pipeline_id'] ?? null,
+                    '_event'      => 'dp:' . $typeCode,
+                ];
+            }
+            $ws = $body['action']['settings']['widget']['settings']
+                ?? $body['action']['settings']['widget']
+                ?? $body['action']['settings']
+                ?? [];
+            $dpSettings = $this->normalizeDpSettings(is_array($ws) ? $ws : []);
+        }
+
+        // ── Формат 2: классический вебхук leads[add] / leads[status] ─────────
+        if (empty($leads)) {
+            $addedLeads    = $body['leads']['add']    ?? [];
+            $statusedLeads = $body['leads']['status'] ?? [];
+            $leads = array_merge(
+                $this->normalizeLeads((array) $addedLeads,    'add'),
+                $this->normalizeLeads((array) $statusedLeads, 'status'),
+            );
+            if ($accountId === '' && !empty($body['account']['id'])) {
+                $accountId = (string) $body['account']['id'];
+            }
+        }
 
         if (empty($leads)) {
+            $this->logger->info('Webhook: no leads in payload', ['keys' => array_keys($body)]);
             return $this->json($response, ['status' => 'no_leads']);
         }
 
-        // account_id comes from the query string we append when registering the webhook
-        $accountId = (string) ($request->getQueryParams()['account_id'] ?? '');
-        if (!$accountId) {
-            return $this->json($response, ['error' => 'account_id query param required'], 400);
+        if ($accountId === '') {
+            return $this->json($response, ['error' => 'account_id required (body or query)'], 400);
         }
 
         $settings = (new SettingsStorage())->load($accountId);
@@ -77,17 +120,17 @@ class WebhookController
             $payload = [
                 'account_id'          => $accountId,
                 'lead_id'             => (int) $lead['id'],
-                'pipeline_id'         => isset($lead['pipeline_id'])  ? (int) $lead['pipeline_id']  : null,
-                'stage_id'            => isset($lead['status_id'])    ? (int) $lead['status_id']    : null,
+                'pipeline_id'         => isset($lead['pipeline_id']) && $lead['pipeline_id'] !== '' ? (int) $lead['pipeline_id'] : null,
+                'stage_id'            => isset($lead['status_id'])   && $lead['status_id']   !== '' ? (int) $lead['status_id']   : null,
                 'distribution_method' => $settings['distribution_method'] ?? 'round_robin',
                 'rules'               => $settings['rules'] ?? [],
-                'dp_settings'         => [],
+                'dp_settings'         => $dpSettings,
                 'event'               => $lead['_event'],
             ];
 
             try {
-                $result      = $service->distribute($payload);
-                $results[]   = ['lead_id' => $lead['id'], 'result' => $result ?? 'skipped'];
+                $result    = $service->distribute($payload);
+                $results[] = ['lead_id' => $lead['id'], 'result' => $result ?? 'skipped'];
             } catch (\Throwable $e) {
                 $this->logger->error('Webhook distribution error', [
                     'lead_id' => $lead['id'],
@@ -97,7 +140,55 @@ class WebhookController
             }
         }
 
+        $this->logger->info('Webhook processed', ['account_id' => $accountId, 'results' => $results]);
+
         return $this->json($response, ['status' => 'ok', 'results' => $results]);
+    }
+
+    /** Тело может прийти как form-urlencoded (PHP → $_POST), JSON или сырой query-string. */
+    private function parseBody(ServerRequestInterface $request): array
+    {
+        $parsed = $request->getParsedBody();
+        if (is_array($parsed) && $parsed !== []) {
+            return $parsed;
+        }
+        if (is_object($parsed)) {
+            return (array) $parsed;
+        }
+        $raw = (string) $request->getBody();
+        if ($raw === '') {
+            return [];
+        }
+        $json = json_decode($raw, true);
+        if (is_array($json)) {
+            return $json;
+        }
+        parse_str($raw, $form);
+        return is_array($form) ? $form : [];
+    }
+
+    /**
+     * Приводим настройки DP-действия к виду, который ждёт DistributionService:
+     * managers → [{id:int}], check_history/check_schedule → bool.
+     * amo может прислать managers как список объектов, список id или map.
+     */
+    private function normalizeDpSettings(array $ws): array
+    {
+        $out = $ws;
+        $managers = [];
+        foreach ((array) ($ws['managers'] ?? []) as $m) {
+            $id = is_array($m) ? ($m['id'] ?? null) : $m;
+            if ($id !== null && $id !== '' && (int) $id > 0) {
+                $managers[] = ['id' => (int) $id];
+            }
+        }
+        $out['managers'] = $managers;
+        foreach (['check_history', 'check_schedule'] as $flag) {
+            if (array_key_exists($flag, $ws)) {
+                $out[$flag] = filter_var($ws[$flag], FILTER_VALIDATE_BOOL);
+            }
+        }
+        return $out;
     }
 
     /** AmoCRM sends each lead as a sub-array; normalize to a flat list */

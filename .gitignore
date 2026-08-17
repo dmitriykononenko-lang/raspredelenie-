@@ -20,3 +20,5 @@ Thumbs.db
 
 # PHPUnit runtime cache
 server/.phpunit.result.cache
+server/.env.bak*
+server/.env.*.bak
