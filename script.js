@@ -26,7 +26,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.1.3';
+        var WIDGET_VERSION = '1.1.4';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -672,8 +672,13 @@ define(['jquery', 'underscore'], function($, _) {
         // (там есть rights.is_active и rights.group_id). Фолбэк — constant('managers').
         var _users = null, _usersLoading = false, _usersWaiters = [];
 
-        // Названия отделов amoCRM: id → имя (для человекочитаемых групп вместо GROUP_xxx).
+        // Названия отделов amoCRM: id → имя. ВАЖНО: AMOCRM.constant('account')
+        // .users_groups в этом кабинете пуст, поэтому берём отделы из
+        // /api/v4/account?with=users_groups (там id 0 = «Отдел продаж» и т.д.).
+        // Синхронный фолбэк на constant остаётся на случай недоступности API.
+        var _groupMap = null;
         function amoGroupNames() {
+            if (_groupMap) return _groupMap;
             var map = {};
             try {
                 var acc = AMOCRM.constant('account');
@@ -681,6 +686,20 @@ define(['jquery', 'underscore'], function($, _) {
                 _.each(groups, function(g) { if (g && g.id != null) map[String(g.id)] = g.name || ''; });
             } catch (e) {}
             return map;
+        }
+        // Асинхронно тянет реальные отделы из API и кэширует в _groupMap.
+        function loadGroupMap() {
+            var d = $.Deferred();
+            $.ajax({ url: '/api/v4/account?with=users_groups', type: 'GET', dataType: 'json' })
+                .done(function(resp) {
+                    var groups = (resp && resp._embedded && resp._embedded.users_groups) || resp.users_groups || [];
+                    var map = {};
+                    _.each(groups, function(g) { if (g && g.id != null) map[String(g.id)] = g.name || ''; });
+                    _groupMap = (Object.keys(map).length ? map : amoGroupNames());
+                    d.resolve(_groupMap);
+                })
+                .fail(function() { _groupMap = amoGroupNames(); d.resolve(_groupMap); });
+            return d.promise();
         }
 
         // Фолбэк-ростер из constant('managers') — только активные, если можно определить.
@@ -721,29 +740,33 @@ define(['jquery', 'underscore'], function($, _) {
             if (cb) _usersWaiters.push(cb);
             if (_usersLoading) return;
             _usersLoading = true;
-            var gmap = amoGroupNames();
-            $.ajax({ url: '/api/v4/users?limit=250', type: 'GET', dataType: 'json' })
-                .done(function(resp) {
-                    var list = (resp && resp._embedded && resp._embedded.users) || [];
-                    var arr = [];
-                    _.each(list, function(u) {
-                        // amo отдаёт и активных, и деактивированных — оставляем активных.
-                        if (u.rights && u.rights.is_active === false) return;
-                        var gid = (u.rights && u.rights.group_id != null) ? String(u.rights.group_id) : null;
-                        arr.push({
-                            id:    parseInt(u.id, 10),
-                            name:  u.name || ('#' + u.id),
-                            group: (gid && gmap[gid]) ? gmap[gid] : ''
+            // Сначала отделы (реальные названия), потом активные пользователи.
+            loadGroupMap().always(function(gmap) {
+                gmap = gmap || amoGroupNames();
+                $.ajax({ url: '/api/v4/users?limit=250', type: 'GET', dataType: 'json' })
+                    .done(function(resp) {
+                        var list = (resp && resp._embedded && resp._embedded.users) || [];
+                        var arr = [];
+                        _.each(list, function(u) {
+                            // amo отдаёт и активных, и деактивированных — оставляем активных.
+                            if (u.rights && u.rights.is_active === false) return;
+                            // group_id может быть 0 (валидный отдел «Отдел продаж»).
+                            var gid = (u.rights && u.rights.group_id != null) ? String(u.rights.group_id) : null;
+                            arr.push({
+                                id:    parseInt(u.id, 10),
+                                name:  u.name || ('#' + u.id),
+                                group: (gid != null && gmap[gid]) ? gmap[gid] : ''
+                            });
                         });
+                        _users = arr.length ? arr : getUsersFromConstant();
+                    })
+                    .fail(function() { _users = getUsersFromConstant(); })
+                    .always(function() {
+                        _usersLoading = false;
+                        var ws = _usersWaiters.slice(); _usersWaiters = [];
+                        _.each(ws, function(f) { try { f(_users); } catch (e) {} });
                     });
-                    _users = arr.length ? arr : getUsersFromConstant();
-                })
-                .fail(function() { _users = getUsersFromConstant(); })
-                .always(function() {
-                    _usersLoading = false;
-                    var ws = _usersWaiters.slice(); _usersWaiters = [];
-                    _.each(ws, function(f) { try { f(_users); } catch (e) {} });
-                });
+            });
         }
 
         function currentUserId() {
