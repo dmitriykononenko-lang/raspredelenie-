@@ -26,7 +26,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.1.5';
+        var WIDGET_VERSION = '1.1.6';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -185,6 +185,15 @@ define(['jquery', 'underscore'], function($, _) {
                 '          Учитывать рабочее расписание',
                 '        </label>',
                 '      </div>',
+                '    </div>',
+
+                // Redistribution (перераспределение по таймауту)
+                '    <div class="dist-field">',
+                '      <label class="dist-label">Перераспределять, если менеджер не взял</label>',
+                '      <select class="js-redistribute dist-select">',
+                (function(){ var v=parseInt(rule.redistribute_after,10)||0; var opts=[[0,'Выключено'],[5,'через 5 минут'],[10,'через 10 минут'],[15,'через 15 минут'],[30,'через 30 минут'],[60,'через 60 минут']]; return opts.map(function(o){return '        <option value="'+o[0]+'"'+(v===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join(''); })(),
+                '      </select>',
+                '      <small class="dist-hint">«Не взял» = сделка осталась на этом этапе и ответственный не сменился. Передаётся следующему по кругу (учитывая онлайн и график), максимум 3 раза.</small>',
                 '    </div>',
 
                 // Filters collapsible section
@@ -398,12 +407,13 @@ define(['jquery', 'underscore'], function($, _) {
                 if (customFields.length) filters.custom_fields = customFields;
 
                 var rule = {
-                    pipeline_id:    $row.find('.js-rule-pipeline').val() || null,
-                    stage_id:       $row.find('.js-rule-stage').val()    || null,
-                    check_history:  $row.find('.js-check-history').is(':checked'),
-                    check_schedule: $row.find('.js-check-schedule').is(':checked'),
-                    managers:       managers,
-                    filters:        filters
+                    pipeline_id:        $row.find('.js-rule-pipeline').val() || null,
+                    stage_id:           $row.find('.js-rule-stage').val()    || null,
+                    check_history:      $row.find('.js-check-history').is(':checked'),
+                    check_schedule:     $row.find('.js-check-schedule').is(':checked'),
+                    redistribute_after: parseInt($row.find('.js-redistribute').val(), 10) || 0,
+                    managers:           managers,
+                    filters:            filters
                 };
 
                 if (rule.pipeline_id && rule.managers.length) {
@@ -1063,7 +1073,7 @@ define(['jquery', 'underscore'], function($, _) {
                             var mid    = (l.manager_id != null) ? l.manager_id : l.user_id;
                             var reason = l.reason || l.result || l.status || '';
                             var label  = (typeof LOG_REASONS !== 'undefined' && LOG_REASONS[reason]) ? LOG_REASONS[reason] : (reason || '—');
-                            var ok     = (reason === 'assigned' || reason === 'history_match');
+                            var ok     = (reason === 'assigned' || reason === 'history_match' || reason === 'redistributed');
                             var badge  = ok ? 'rd-badge--algo' : 'rd-badge--muted';
                             h.push('<div class="rd-row" style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr 1.4fr .8fr;gap:12px;align-items:center;font-size:13px">' +
                               '<div class="rd-mono" style="color:#586173;font-size:12px">' + _.escape(fmtTs(l.ts || l.time || l.date)) + '</div>' +
@@ -1721,8 +1731,10 @@ define(['jquery', 'underscore'], function($, _) {
 
         var LOG_REASONS = {
             assigned:            'Назначена',
+            redistributed:       'Перераспределена',
             skipped_no_rule:     'Нет правила',
             skipped_schedule:    'Вне расписания',
+            skipped_offline:     'Все офлайн',
             skipped_no_managers: 'Нет менеджеров',
             history_match:       'История контакта'
         };
