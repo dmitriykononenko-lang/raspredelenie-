@@ -143,6 +143,27 @@ class DistributionService
             'method'  => $method,
         ]);
 
+        // ── 9. Запланировать перераспределение, если включено в правиле ────
+        $redistributeAfter = (int) ($rule['redistribute_after'] ?? 0);
+        $pending = new PendingStorage();
+        if ($redistributeAfter > 0) {
+            $pending->put($accountId, [
+                'lead_id'        => $leadId,
+                'pipeline_id'    => $pipelineId,
+                'stage_id'       => $stageId,
+                'manager_id'     => $chosenId,
+                'managers'       => $managerIds,
+                'method'         => $method,
+                'check_schedule' => !empty($rule['check_schedule']),
+                'attempts'       => 0,
+                'max'            => (int) ($rule['redistribute_max'] ?? 3),
+                'after_sec'      => $redistributeAfter * 60,
+                'next_at'        => time() + $redistributeAfter * 60,
+            ]);
+        } else {
+            $pending->remove($accountId, $leadId);
+        }
+
         return ['assigned_to_id' => $chosenId, 'assigned_to_name' => (string) $chosenId];
     }
 
