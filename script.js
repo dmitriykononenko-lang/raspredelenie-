@@ -26,7 +26,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.0.26';
+        var WIDGET_VERSION = '1.1.0';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -733,38 +733,42 @@ define(['jquery', 'underscore'], function($, _) {
                    ($btn || '') + '</div>';
         }
 
+        // Дизайн KO:AGENCY (редизайн). Пункт навигации сайдбара.
+        function navRd(key, label, on) {
+            return '<button class="rd-nav__i' + (on ? ' rd-nav__i--on' : '') +
+                   '" data-p="' + key + '">' + _.escape(label) + '</button>';
+        }
+
         function renderAdvancedPage($mount) {
             $advMount = $mount;
             $mount.html([
-                '<div class="dist-page">',
-                '  <aside class="dist-side">',
-                '    <div class="dist-side__brand">',
-                '      <div class="dist-side__mk">',
-                '        <svg viewBox="0 0 24 24" fill="none" width="22" height="22">',
-                '          <path d="M6 12l11-6M6 12h11M6 12l11 6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
-                '          <circle cx="6" cy="12" r="2.4" fill="#fff"/>',
-                '          <circle cx="18" cy="6" r="1.9" fill="#e5484d"/><circle cx="18" cy="12" r="1.9" fill="#e5484d"/><circle cx="18" cy="18" r="1.9" fill="#e5484d"/>',
-                '        </svg>',
-                '      </div>',
-                '      <div><b>KO:AGENCY</b><span>РАСПРЕДЕЛЕНИЕ</span></div>',
+                '<div class="rd-scope"><div class="rd-page">',
+                '  <div class="rd-top">',
+                '    <div class="rd-brand"><div class="rd-brand__mk">KO<i>·</i>AGENCY</div>',
+                '      <div class="rd-brand__sub">' + _.escape(self.i18n('advanced.title')) + '</div></div>',
+                '    <div class="rd-toptabs js-toptabs" style="display:none">',
+                '      <button class="rd-toptab rd-toptab--on" data-tab="templates">' + _.escape(self.i18n('nav.templates')) + '</button>',
+                '      <button class="rd-toptab" data-tab="hours">' + _.escape(self.i18n('nav.worktime')) + '</button>',
                 '    </div>',
-                '    <div class="dist-online">',
-                '      <div class="dist-online__row">',
-                '        <span class="dist-online__lbl"><i class="dist-dot"></i>' + _.escape(self.i18n('status.online')) + '</span>',
-                '        <label class="dist-switch"><input type="checkbox" class="js-self-online"><span class="dist-switch__tr"></span></label>',
-                '      </div>',
-                '      <small>' + _.escape(self.i18n('status.self_hint')) + '</small>',
-                '    </div>',
-                '    <nav class="dist-nav">',
-                       navItem('status',    self.i18n('status.title'),   true),
-                       navItem('templates', self.i18n('nav.templates'),  false),
-                '      <button class="dist-nav__i" disabled>' + _.escape(self.i18n('nav.worktime')) + ' <span class="dist-soon">' + _.escape(self.i18n('common.soon')) + '</span></button>',
-                '      <button class="dist-nav__i" disabled>' + _.escape(self.i18n('nav.reports')) + ' <span class="dist-soon">' + _.escape(self.i18n('common.soon')) + '</span></button>',
-                '    </nav>',
-                '    <div class="dist-side__foot">raspredelenie.koagency.ru</div>',
-                '  </aside>',
-                '  <main class="dist-main"><div class="js-panel"></div></main>',
-                '</div>'
+                '  </div>',
+                '  <div class="rd-body">',
+                '    <aside class="rd-side">',
+                '      <div class="rd-online"><div class="rd-online__row">',
+                '        <span class="rd-online__dot"></span>',
+                '        <span class="rd-online__lbl">' + _.escape(self.i18n('status.online')) + '</span>',
+                '        <div class="rd-tgl rd-tgl--green js-self-online" style="margin-left:auto"><div class="rd-tgl__knob"></div></div>',
+                '      </div><div class="rd-online__sub">' + _.escape(self.i18n('status.self_hint')) + '</div></div>',
+                '      <nav class="rd-nav">',
+                         navRd('status',    self.i18n('status.title'),        true),
+                         navRd('dist',      self.i18n('nav.report_dist'),     false),
+                         navRd('statusrep', self.i18n('nav.report_status'),   false),
+                         navRd('deputy',    self.i18n('nav.report_deputy'),   false),
+                         navRd('settings',  self.i18n('nav.settings'),        false),
+                '      </nav>',
+                '    </aside>',
+                '    <main class="rd-content"><div class="js-panel"></div></main>',
+                '  </div>',
+                '</div></div>'
             ].join(''));
 
             bindAdvancedEvents($mount);
@@ -772,54 +776,217 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         function switchPanel($mount, key) {
-            $mount.find('.dist-nav__i').removeClass('dist-nav__i--on');
-            $mount.find('.dist-nav__i[data-p="' + key + '"]').addClass('dist-nav__i--on');
+            $mount.find('.rd-nav__i').removeClass('rd-nav__i--on');
+            $mount.find('.rd-nav__i[data-p="' + key + '"]').addClass('rd-nav__i--on');
+            var $tabs  = $mount.find('.js-toptabs');
             var $panel = $mount.find('.js-panel');
-            if (key === 'templates') renderTemplatesPanel($mount, $panel);
-            else                     renderStatusPanel($mount, $panel);
+            if (key === 'settings') {
+                $tabs.css('display', '');
+                renderSettingsSurface($mount, $panel, $mount.data('settingsTab') || 'templates');
+            } else {
+                $tabs.css('display', 'none');
+                if (key === 'dist')            renderReportPanel($mount, $panel, 'dist');
+                else if (key === 'statusrep')  renderReportPanel($mount, $panel, 'statusrep');
+                else if (key === 'deputy')     renderReportPanel($mount, $panel, 'deputy');
+                else                           renderStatusPanel($mount, $panel);
+            }
         }
 
-        // ── Панель: Статусы ─────────────────────────────────────────────────────
+        // Тёмный тост снизу по центру (эталон дизайна), автоскрытие ~2.4с.
+        // Корень с CSS-переменными (.rd-scope). Модалки/тосты монтируем СЮДА,
+        // иначе var(--...) не наследуются и стили ломаются.
+        function rdRoot() {
+            if (!$advMount || !$advMount.length) return null;
+            var $s = $advMount.find('.rd-scope').first();
+            return $s.length ? $s : $advMount;
+        }
+
+        var _toastTimer = null;
+        function toast(text) {
+            var $root = rdRoot();
+            if (!$root) { notify(text, 'success'); return; }
+            $root.find('.rd-toast').remove();
+            var $t = $('<div class="rd-toast"><i>✓</i>' + _.escape(text) + '</div>');
+            $root.append($t);
+            if (_toastTimer) clearTimeout(_toastTimer);
+            _toastTimer = setTimeout(function() { $t.fadeOut(150, function() { $t.remove(); }); }, 2400);
+        }
+
+        // ── Панель: Статусы (редизайн) ──────────────────────────────────────────
         function renderStatusPanel($mount, $panel) {
-            var refreshBtn = '<button class="dist-btn dist-btn--secondary dist-btn--sm js-status-refresh">&#x21bb; ' +
-                             _.escape(self.i18n('common.refresh')) + '</button>';
-            $panel.html(
-                panelHead(self.i18n('status.title'), self.i18n('status.desc'), refreshBtn) +
-                '<div class="dist-status-count dist-muted js-active-count"></div>' +
-                '<div class="dist-card"><div class="js-status-body dist-status-body"><p class="dist-muted">' +
-                _.escape(self.i18n('common.loading')) + '</p></div></div>'
-            );
+            $panel.html([
+                '<div class="rd-h1">' + _.escape(self.i18n('status.title_page')) + '</div>',
+                '<div class="rd-desc">' + _.escape(self.i18n('status.desc')) + '</div>',
+                '<div class="rd-filters"><div style="font-size:13.5px">' + _.escape(self.i18n('status.participate')) +
+                  ' <span class="rd-mono js-active-count" style="font-weight:700"></span></div>',
+                '  <button class="rd-btn rd-btn--ghost rd-btn--sm js-status-refresh" style="margin-left:auto">↻ ' +
+                     _.escape(self.i18n('common.refresh')) + '</button></div>',
+                '<div class="rd-filters"><div class="rd-filter rd-filter--ph">' + _.escape(self.i18n('status.col_manager')) + '</div>',
+                '  <div class="rd-dd js-dept-dd"><div class="rd-filter js-dept-btn" style="min-width:190px">' +
+                     '<span class="js-dept-label">' + _.escape(self.i18n('status.all_depts')) + '</span><span class="rd-caret">▾</span></div></div></div>',
+                '<div class="rd-card"><div class="rd-scroll js-status-body"><div class="rd-row" style="color:#8b95a7">' +
+                   _.escape(self.i18n('common.loading')) + '</div></div></div>'
+            ].join(''));
 
             var users = getUsers();
             var $body = $panel.find('.js-status-body');
-            if (!users.length) {
-                $body.html(emptyState(self.i18n('status.no_users')));
-                return;
-            }
+            if (!users.length) { $body.html(emptyState(self.i18n('status.no_users'))); return; }
+
+            var deptFilter = $mount.data('deptFilter') || '';
             apiRequest('/api/status', null, 'GET')
                 .done(function(resp) {
-                    var statuses = (resp && resp.statuses) || {};
-                    renderStatusTable($body, users, statuses);
-                    syncSelfToggle($mount, statuses);
+                    var st = (resp && resp.statuses) || {};
+                    $mount.data('statuses', st);
+                    renderStatusTableRd($body, users, st, deptFilter);
+                    syncSelfToggle($mount, st);
                     updateActiveCount($mount);
                 })
                 .fail(function() {
-                    renderStatusTable($body, users, {});
+                    $mount.data('statuses', {});
+                    renderStatusTableRd($body, users, {}, deptFilter);
                     updateActiveCount($mount);
                     notify(self.i18n('status.load_error'), 'error');
                 });
         }
 
-        // Счётчик «сколько сотрудников участвует» — обновляем из текущих тумблеров,
-        // чтобы значение не зависело от формата ответа сервера.
+        // Таблица сотрудников, сгруппированная по отделам (редизайн).
+        function renderStatusTableRd($body, users, statuses, deptFilter) {
+            var groups = {};
+            _.each(users, function(u) {
+                var g = u.group || '—';
+                if (deptFilter && g !== deptFilter) return;
+                (groups[g] = groups[g] || []).push(u);
+            });
+            var html = ['<div class="rd-thead rd-sgrid"><div class="rd-name"><span class="rd-check js-check-all"></span>' +
+                        _.escape(self.i18n('status.col_manager')) + '</div><div>' + _.escape(self.i18n('status.col_status')) + '</div></div>'];
+            var any = false;
+            _.each(groups, function(list, group) {
+                any = true;
+                if (group !== '—') html.push('<div class="rd-grp">' + _.escape(group) + '</div>');
+                _.each(list, function(u) {
+                    var online = !Object.prototype.hasOwnProperty.call(statuses, String(u.id)) ||
+                                 !!(statuses[String(u.id)] && statuses[String(u.id)].online);
+                    html.push(
+                        '<div class="rd-row rd-sgrid">' +
+                        '<div class="rd-name"><span class="rd-check js-row-check" data-uid="' + u.id + '"></span>' +
+                          '<span class="rd-av" style="background:' + avatarColor(u.id) + '">' + _.escape(initials(u.name)) + '</span>' + _.escape(u.name) + '</div>' +
+                        '<div class="rd-stat"><div class="rd-tgl js-mgr-online' + (online ? ' rd-tgl--on' : '') + '" data-uid="' + u.id + '"><div class="rd-tgl__knob"></div></div>' +
+                          '<span class="rd-statlbl js-stat-lbl" style="color:' + (online ? '#1a7a4a' : '#98a1b3') + '">' +
+                             _.escape(online ? self.i18n('status.on') : self.i18n('status.off')) + '</span></div>' +
+                        '</div>'
+                    );
+                });
+            });
+            if (!any) html.push('<div class="rd-row" style="color:#8b95a7">' + _.escape(self.i18n('status.no_users')) + '</div>');
+            $body.html(html.join(''));
+        }
+
+        // Дропдаун фильтра по отделу (в панели «Статусы»).
+        function toggleDeptMenu($mount) {
+            var $dd = $mount.find('.js-dept-dd');
+            if ($dd.find('.rd-dd__menu').length) { $dd.find('.rd-dd__menu').remove(); return; }
+            var users = getUsers();
+            var depts = _.uniq(_.compact(_.map(users, function(u) { return u.group; })));
+            var cur   = $mount.data('deptFilter') || '';
+            var items = ['<div class="rd-dd__i' + (!cur ? ' rd-dd__i--on' : '') + '" data-dept="">' + _.escape(self.i18n('status.all_depts')) + '</div>'];
+            _.each(depts, function(d) {
+                items.push('<div class="rd-dd__i' + (cur === d ? ' rd-dd__i--on' : '') + '" data-dept="' + _.escape(d) + '">' + _.escape(d) + '</div>');
+            });
+            $dd.append('<div class="rd-dd__menu">' + items.join('') + '</div>');
+        }
+
+        // Счётчик «участвуют: N из M» — по классам тумблеров (не зависит от формата API).
         function updateActiveCount($scope) {
             $scope = $scope || $advMount;
             if (!$scope || !$scope.length) return;
             var total = $scope.find('.js-mgr-online').length;
-            var on    = $scope.find('.js-mgr-online:checked').length;
-            $scope.find('.js-active-count').text(
-                self.i18n('status.active').replace('{n}', on).replace('{total}', total)
+            var on    = $scope.find('.js-mgr-online.rd-tgl--on').length;
+            $scope.find('.js-active-count').text(on + ' ' + self.i18n('status.of') + ' ' + total);
+        }
+
+        // ── Панели отчётов (редизайн) ───────────────────────────────────────────
+        function renderReportPanel($mount, $panel, kind) {
+            var titles = {
+                dist:      [self.i18n('nav.report_dist'),   self.i18n('report.dist_desc')],
+                statusrep: [self.i18n('nav.report_status'), self.i18n('report.status_desc')],
+                deputy:    [self.i18n('nav.report_deputy'), self.i18n('report.deputy_desc')]
+            };
+            var t = titles[kind] || titles.dist;
+            $panel.html(
+                '<div class="rd-h1">' + _.escape(t[0]) + '</div>' +
+                '<div class="rd-desc">' + _.escape(t[1]) + '</div>' +
+                '<div class="rd-card"><div class="rd-scroll js-report-body"><div class="rd-row" style="color:#8b95a7">' +
+                _.escape(self.i18n('common.loading')) + '</div></div></div>'
             );
+            var $body = $panel.find('.js-report-body');
+
+            if (kind === 'deputy') {
+                // Заместители — бэкенда нет: честное пустое состояние.
+                $body.html('<div class="rd-empty">' + _.escape(self.i18n('report.deputy_empty')) + '</div>');
+                return;
+            }
+            var users = getUsers();
+            var nameOf = function(id) { var u = _.find(users, function(x){ return String(x.id) === String(id); }); return u ? u.name : ('#' + id); };
+
+            if (kind === 'dist') {
+                apiRequest('/api/log', null, 'GET').done(function(resp) {
+                    var rows = (resp && (resp.log || resp.items || resp)) || [];
+                    if (!rows.length) { $body.html('<div class="rd-empty">' + _.escape(self.i18n('report.empty')) + '</div>'); return; }
+                    var h = ['<div class="rd-thead" style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr 1.4fr .8fr;gap:12px"><div>' +
+                             _.escape(self.i18n('report.col_date')) + '</div><div>' + _.escape(self.i18n('report.col_result')) + '</div><div>' +
+                             _.escape(self.i18n('status.col_manager')) + '</div><div>' + _.escape(self.i18n('report.col_stage')) + '</div><div>' +
+                             _.escape(self.i18n('report.col_deal')) + '</div></div>'];
+                    _.each(rows, function(l) {
+                        h.push('<div class="rd-row" style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr 1.4fr .8fr;gap:12px;align-items:center;font-size:13px">' +
+                          '<div class="rd-mono" style="color:#586173;font-size:12px">' + _.escape(fmtTs(l.ts || l.time || l.date)) + '</div>' +
+                          '<div><span class="rd-badge rd-badge--algo">' + _.escape(l.result || l.status || '—') + '</span></div>' +
+                          '<div style="font-weight:700">' + _.escape(l.user_id ? nameOf(l.user_id) : '—') + '</div>' +
+                          '<div style="color:#586173">' + _.escape(l.stage_id || l.stage || '—') + '</div>' +
+                          '<div class="rd-mono" style="font-size:12.5px">' + _.escape(l.lead_id || l.deal || '—') + '</div></div>');
+                    });
+                    $body.html(h.join(''));
+                }).fail(function() { $body.html('<div class="rd-empty">' + _.escape(self.i18n('report.load_error')) + '</div>'); });
+            } else { // statusrep
+                apiRequest('/api/status/history?limit=200', null, 'GET').done(function(resp) {
+                    var rows = (resp && resp.history) || [];
+                    if (!rows.length) { $body.html('<div class="rd-empty">' + _.escape(self.i18n('report.empty')) + '</div>'); return; }
+                    var h = ['<div class="rd-thead" style="display:grid;grid-template-columns:1.2fr 1.4fr 1fr 1fr;gap:12px"><div>' +
+                             _.escape(self.i18n('report.col_date')) + '</div><div>' + _.escape(self.i18n('status.col_manager')) + '</div><div>' +
+                             _.escape(self.i18n('report.col_was')) + '</div><div>' + _.escape(self.i18n('report.col_became')) + '</div></div>'];
+                    _.each(rows, function(l) {
+                        var on = !!l.online;
+                        h.push('<div class="rd-row" style="display:grid;grid-template-columns:1.2fr 1.4fr 1fr 1fr;gap:12px;align-items:center;font-size:13px">' +
+                          '<div class="rd-mono" style="color:#586173;font-size:12px">' + _.escape(fmtTs(l.ts)) + '</div>' +
+                          '<div style="font-weight:700">' + _.escape(nameOf(l.user_id)) + '</div>' +
+                          '<div style="color:#586173">' + _.escape(on ? self.i18n('status.off') : self.i18n('status.on')) + '</div>' +
+                          '<div style="color:' + (on ? '#1a7a4a' : '#98a1b3') + '">' + _.escape(on ? self.i18n('status.on') : self.i18n('status.off')) + '</div></div>');
+                    });
+                    $body.html(h.join(''));
+                }).fail(function() { $body.html('<div class="rd-empty">' + _.escape(self.i18n('report.load_error')) + '</div>'); });
+            }
+        }
+
+        function fmtTs(ts) {
+            if (!ts) return '—';
+            var n = parseInt(ts, 10);
+            if (!isNaN(n) && String(ts).length <= 11) { try { return new Date(n * 1000).toLocaleString('ru-RU'); } catch (e) {} }
+            return String(ts);
+        }
+
+        // ── Поверхность «Настройки» (вкладки Шаблоны / Рабочее время) ────────────
+        function renderSettingsSurface($mount, $panel, tab) {
+            $mount.data('settingsTab', tab);
+            $mount.find('.rd-toptab').removeClass('rd-toptab--on');
+            $mount.find('.rd-toptab[data-tab="' + tab + '"]').addClass('rd-toptab--on');
+            if (tab === 'hours') {
+                $panel.html(
+                    '<div class="rd-h1">' + _.escape(self.i18n('nav.worktime')) + '</div>' +
+                    '<div class="rd-desc">' + _.escape(self.i18n('hours.desc')) + '</div>' +
+                    '<div class="rd-soon"><b>' + _.escape(self.i18n('common.soon')) + '</b>' + _.escape(self.i18n('hours.soon')) + '</div>'
+                );
+            } else {
+                renderTemplatesPanel($mount, $panel);
+            }
         }
 
         // ── Панель: Шаблоны ─────────────────────────────────────────────────────
@@ -828,12 +995,13 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         function renderTemplatesPanel($mount, $panel) {
-            var addBtn = '<button class="dist-btn dist-btn--primary js-tpl-add">' +
-                         _.escape(self.i18n('templates.add')) + '</button>';
             $panel.html(
-                panelHead(self.i18n('templates.title'), self.i18n('templates.desc'), addBtn) +
-                '<div class="dist-card"><div class="js-tpl-body"><p class="dist-muted">' +
-                _.escape(self.i18n('common.loading')) + '</p></div></div>'
+                '<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">' +
+                  '<div><div class="rd-h1">' + _.escape(self.i18n('templates.title')) + '</div>' +
+                  '<div class="rd-desc">' + _.escape(self.i18n('templates.desc')) + '</div></div>' +
+                  '<button class="rd-btn rd-btn--primary js-tpl-add">+ ' + _.escape(self.i18n('templates.add')) + '</button></div>' +
+                '<div class="js-tpl-body" style="display:flex;flex-direction:column;gap:10px;margin-top:18px">' +
+                  '<div style="color:#8b95a7;padding:14px">' + _.escape(self.i18n('common.loading')) + '</div></div>'
             );
             loadTemplates($panel);
         }
@@ -845,96 +1013,124 @@ define(['jquery', 'underscore'], function($, _) {
                 .fail(function() { $body.html(errorState(self.i18n('templates.load_error'))); });
         }
 
+        // Условие-подпись карточки шаблона (из filters, если заданы).
+        function tplCondLabel(t) {
+            var f = t.filters || {}, p = [];
+            if (t.pipeline_id)            p.push(self.i18n('templates.cond_pipeline'));
+            if (f.name_contains)          p.push(self.i18n('templates.cond_name') + ': ' + f.name_contains);
+            if (f.budget_min)             p.push(self.i18n('templates.cond_budget') + ' ' + f.budget_min);
+            if ((f.tags || []).length)    p.push(self.i18n('templates.cond_tags') + ': ' + f.tags.join(', '));
+            return p.length ? p.join(' · ') : self.i18n('templates.cond_any');
+        }
+
+        // Карточки-правила (редизайн): приоритет, название, бейдж алгоритма,
+        // стек аватаров участников, «Изменить», тумблер вкл/выкл.
         function renderTemplatesTable($body, templates) {
             tplCache = {};
-            if (!templates.length) {
-                $body.html(emptyState(self.i18n('templates.empty')));
-                return;
-            }
-            var html = ['<table class="dist-table"><thead><tr>' +
-                '<th>' + _.escape(self.i18n('templates.col_name')) + '</th>' +
-                '<th>' + _.escape(self.i18n('templates.col_type')) + '</th>' +
-                '<th class="dist-ta-c">' + _.escape(self.i18n('templates.col_managers')) + '</th>' +
-                '<th class="dist-ta-r"></th></tr></thead><tbody>'];
-
-            _.each(templates, function(t) {
+            if (!templates.length) { $body.html(emptyState(self.i18n('templates.empty'))); return; }
+            var users = getUsers();
+            var html = [];
+            _.each(templates, function(t, idx) {
                 tplCache[t.id] = t;
+                var mgrs    = t.managers || [];
+                var avatars = _.map(mgrs.slice(0, 3), function(m) {
+                    var u  = _.find(users, function(x) { return String(x.id) === String(m.id); });
+                    var nm = u ? u.name : ('#' + m.id);
+                    return '<span class="rd-av" style="background:' + avatarColor(m.id) + '">' + _.escape(initials(nm)) + '</span>';
+                }).join('');
+                var enabled = t.enabled !== false;
                 html.push(
-                    '<tr>' +
-                    '<td><b>' + _.escape(t.name) + '</b></td>' +
-                    '<td><span class="dist-badge">' + _.escape(tplTypeLabel(t.type)) + '</span></td>' +
-                    '<td class="dist-ta-c dist-mono">' + ((t.managers || []).length) + '</td>' +
-                    '<td class="dist-ta-r dist-row-actions">' +
-                    '<button class="dist-icon-btn js-tpl-edit" data-id="' + _.escape(t.id) + '" title="' + _.escape(self.i18n('common.edit')) + '">&#9998;</button>' +
-                    '<button class="dist-icon-btn dist-icon-btn--danger js-tpl-del" data-id="' + _.escape(t.id) + '" title="' + _.escape(self.i18n('common.delete')) + '">&#215;</button>' +
-                    '</td></tr>'
+                    '<div class="rd-rule">' +
+                    '<div class="rd-rule__pri">' + (idx + 1) + '</div>' +
+                    '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+                      '<div style="font-size:14.5px;font-weight:700">' + _.escape(t.name) + '</div>' +
+                      '<span class="rd-badge rd-badge--algo">' + _.escape(tplTypeLabel(t.type)) + '</span></div>' +
+                      '<div style="font-size:12.5px;color:#586173;margin-top:4px">' + _.escape(tplCondLabel(t)) + '</div></div>' +
+                    '<div class="rd-avstack">' + avatars + '</div>' +
+                    '<div style="font-size:12.5px;color:#586173;white-space:nowrap">' + mgrs.length + ' ' + _.escape(self.i18n('templates.members')) + '</div>' +
+                    '<button class="rd-btn rd-btn--ghost rd-btn--sm js-tpl-edit" data-id="' + _.escape(t.id) + '">' + _.escape(self.i18n('common.edit')) + '</button>' +
+                    '<div class="rd-tgl js-tpl-toggle' + (enabled ? ' rd-tgl--on' : '') + '" data-id="' + _.escape(t.id) + '"><div class="rd-tgl__knob"></div></div>' +
+                    '</div>'
                 );
             });
-            html.push('</tbody></table>');
             $body.html(html.join(''));
         }
 
-        // ── Модалка шаблона ─────────────────────────────────────────────────────
+        // ── Модалка редактора шаблона (редизайн) ─────────────────────────────────
+        var ALGO_META = {
+            round_robin: { g: '🔁', d: 'algo_rr' },
+            workload:    { g: '⚖️', d: 'algo_wl' },
+            percent:     { g: '％', d: 'algo_pct' }
+        };
         function openTemplateModal(tpl) {
             var isEdit = !!tpl;
-            tpl = tpl || { name: '', type: 'round_robin', managers: [], check_history: false, check_schedule: false };
-            var users = getUsers();
+            tpl = tpl || { name: '', type: 'round_robin', managers: [], check_history: false, check_schedule: false, filters: {} };
+            var curType = tpl.type || 'round_robin';
+            var users   = getUsers();
+            var memberIds = _.map(tpl.managers || [], function(m) { return String(m.id); });
+            var pctOf     = function(id) { var m = _.find(tpl.managers || [], function(x) { return String(x.id) === String(id); }); return (m && m.percent != null) ? m.percent : 0; };
 
-            var seg = _.map(['round_robin', 'workload', 'percent'], function(tp) {
-                return '<button type="button" class="dist-seg__i' + (tpl.type === tp ? ' dist-seg__i--on' : '') +
-                       '" data-type="' + tp + '">' + _.escape(tplTypeLabel(tp)) + '</button>';
+            var algos = _.map(['round_robin', 'workload', 'percent'], function(tp) {
+                var m = ALGO_META[tp];
+                return '<div class="rd-algo' + (curType === tp ? ' rd-algo--on' : '') + ' js-algo" data-type="' + tp + '">' +
+                       '<div class="rd-algo__hd"><div class="rd-algo__ic">' + m.g + '</div>' +
+                       '<div class="rd-algo__t">' + _.escape(tplTypeLabel(tp)) + '</div>' +
+                       '<span class="js-algo-check" style="margin-left:auto;color:#d22730;font-size:15px;' + (curType === tp ? '' : 'display:none') + '">✓</span></div>' +
+                       '<div class="rd-algo__d">' + _.escape(self.i18n('templates.' + m.d)) + '</div></div>';
+            }).join('');
+
+            var members = _.map(users, function(u) {
+                var on = memberIds.indexOf(String(u.id)) !== -1;
+                return '<div class="rd-mchip js-member' + (on ? ' rd-mchip--on' : '') + '" data-uid="' + u.id + '">' +
+                       '<span class="rd-av rd-av--sm" style="background:' + avatarColor(u.id) + '">' + _.escape(initials(u.name)) + '</span>' +
+                       _.escape(u.name) +
+                       '<input type="number" min="0" max="100" class="js-member-pct" value="' + pctOf(u.id) + '" style="' + (curType === 'percent' ? '' : 'display:none') + '">' +
+                       '<span class="js-member-check" style="color:#d22730;font-weight:700;' + (on ? '' : 'display:none') + '">✓</span></div>';
+            }).join('');
+
+            var conds = _.map(tplCondChips(tpl), function(c) {
+                return '<div class="rd-chip"><span class="rd-chip__k">' + _.escape(c.k) + '</span><span style="font-weight:700">' + _.escape(c.v) + '</span></div>';
             }).join('');
 
             var $modal = $(
-                '<div class="dist-modal">' +
-                '  <div class="dist-modal__box">' +
-                '    <div class="dist-modal__head"><b>' +
-                       _.escape(self.i18n(isEdit ? 'templates.modal_edit' : 'templates.modal_new')) +
-                '      </b><button class="dist-modal__x js-modal-close">&#215;</button></div>' +
-                '    <div class="dist-modal__body">' +
-                '      <div class="dist-field"><label class="dist-label">' + _.escape(self.i18n('templates.f_name')) +
-                         ' <span class="dist-required">*</span></label>' +
-                '        <input type="text" class="dist-input js-tpl-name" value="' + _.escape(tpl.name) + '" /></div>' +
-                '      <div class="dist-field"><label class="dist-label">' + _.escape(self.i18n('templates.f_type')) + '</label>' +
-                '        <div class="dist-seg js-tpl-seg">' + seg + '</div></div>' +
-                '      <div class="dist-field"><label class="dist-label">' + _.escape(self.i18n('templates.f_managers')) + '</label>' +
-                '        <div class="js-tpl-chips dist-chips"></div>' +
-                '        <select class="dist-select js-tpl-mgr-add"><option value="">' + _.escape(self.i18n('templates.add_manager')) + '</option>' +
-                           _.map(users, function(u) { return '<option value="' + u.id + '">' + _.escape(u.name) + '</option>'; }).join('') +
-                '        </select></div>' +
-                '      <label class="dist-check"><input type="checkbox" class="js-tpl-history"' + (tpl.check_history ? ' checked' : '') + '> ' +
-                         _.escape(self.i18n('templates.f_history')) + '</label>' +
-                '      <label class="dist-check"><input type="checkbox" class="js-tpl-schedule"' + (tpl.check_schedule ? ' checked' : '') + '> ' +
-                         _.escape(self.i18n('templates.f_schedule')) + '</label>' +
-                '    </div>' +
-                '    <div class="dist-modal__foot">' +
-                '      <button class="dist-btn dist-btn--secondary js-modal-close">' + _.escape(self.i18n('common.cancel')) + '</button>' +
-                '      <button class="dist-btn dist-btn--primary js-tpl-save" data-id="' + _.escape(tpl.id || '') + '">' +
-                         _.escape(self.i18n('common.save')) + '</button>' +
-                '    </div>' +
-                '  </div></div>'
+                '<div class="rd-overlay js-modal-overlay"><div class="rd-modal">' +
+                '  <div class="rd-modal__head"><div class="rd-modal__title">' +
+                     _.escape(self.i18n(isEdit ? 'templates.modal_edit' : 'templates.modal_new')) +
+                '    </div><button class="rd-x js-modal-close">×</button></div>' +
+                '  <div class="rd-modal__body">' +
+                '    <div><div class="rd-lbl">' + _.escape(self.i18n('templates.f_name')) + '</div>' +
+                '      <input type="text" class="rd-field-input js-tpl-name" value="' + _.escape(tpl.name) + '"></div>' +
+                '    <div><div class="rd-lbl">' + _.escape(self.i18n('templates.f_conditions')) + '</div>' +
+                '      <div class="rd-chips">' + conds + '<div class="rd-chip rd-chip--add" title="' + _.escape(self.i18n('common.soon')) + '">+ ' + _.escape(self.i18n('templates.cond_add')) + '</div></div></div>' +
+                '    <div><div class="rd-lbl">' + _.escape(self.i18n('templates.f_type')) + '</div>' +
+                '      <div class="rd-algos js-algos">' + algos + '</div></div>' +
+                '    <div><div class="rd-lbl">' + _.escape(self.i18n('templates.f_members')) + '</div>' +
+                '      <div class="rd-chips js-members">' + members + '</div></div>' +
+                '    <div><div class="rd-lbl">' + _.escape(self.i18n('templates.f_extra')) + '</div>' +
+                '      <label style="display:flex;align-items:center;gap:9px;font-size:13px;cursor:pointer;margin-bottom:8px"><input type="checkbox" class="js-tpl-history"' + (tpl.check_history ? ' checked' : '') + '>' + _.escape(self.i18n('templates.f_history')) + '</label>' +
+                '      <label style="display:flex;align-items:center;gap:9px;font-size:13px;cursor:pointer"><input type="checkbox" class="js-tpl-schedule"' + (tpl.check_schedule ? ' checked' : '') + '>' + _.escape(self.i18n('templates.f_schedule')) + '</label></div>' +
+                '  </div>' +
+                '  <div class="rd-modal__foot">' +
+                     (isEdit ? '<button class="rd-btn js-tpl-del" data-id="' + _.escape(tpl.id) + '" style="color:#d22730;background:none;border:none">' + _.escape(self.i18n('templates.delete')) + '</button>' : '<span></span>') +
+                '    <div style="display:flex;gap:10px">' +
+                '      <button class="rd-btn rd-btn--ghost js-modal-close">' + _.escape(self.i18n('common.cancel')) + '</button>' +
+                '      <button class="rd-btn rd-btn--primary js-tpl-save" data-id="' + _.escape(tpl.id || '') + '">' + _.escape(self.i18n('common.save')) + '</button>' +
+                '    </div></div>' +
+                '</div></div>'
             );
-
-            $advMount.append($modal);
-            $modal.data('type', tpl.type);
-            var $chips = $modal.find('.js-tpl-chips');
-            _.each(tpl.managers || [], function(m) {
-                var u = _.find(users, function(x) { return String(x.id) === String(m.id); });
-                addChip($chips, m.id, u ? u.name : ('#' + m.id), m.percent, tpl.type === 'percent');
-            });
+            (rdRoot() || $advMount).append($modal);
+            $modal.data('type', curType);
         }
 
-        function addChip($chips, id, name, percent, showPercent) {
-            if ($chips.find('.dist-chip[data-uid="' + id + '"]').length) return;
-            var pct = showPercent
-                ? '<input type="number" class="dist-chip__pct js-chip-pct" min="0" max="100" value="' + (percent != null ? percent : 0) + '">%'
-                : '';
-            $chips.append(
-                '<span class="dist-chip" data-uid="' + id + '">' +
-                '<span class="dist-av dist-av--sm" style="background:' + avatarColor(id) + '">' + _.escape(initials(name)) + '</span>' +
-                _.escape(name) + pct +
-                '<span class="dist-chip__x js-chip-x">&#215;</span></span>'
-            );
+        // Условия шаблона как пары ключ/значение (из filters/pipeline).
+        function tplCondChips(t) {
+            var f = t.filters || {}, out = [];
+            if (t.pipeline_id)         out.push({ k: self.i18n('templates.cond_pipeline') + ':', v: String(t.pipeline_id) });
+            if (f.name_contains)       out.push({ k: self.i18n('templates.cond_name') + ':', v: f.name_contains });
+            if (f.budget_min)          out.push({ k: self.i18n('templates.cond_budget') + ':', v: 'от ' + f.budget_min });
+            if ((f.tags || []).length) out.push({ k: self.i18n('templates.cond_tags') + ':', v: f.tags.join(', ') });
+            if (!out.length)           out.push({ k: self.i18n('templates.cond_any'), v: '' });
+            return out;
         }
 
         function saveTemplate($modal) {
@@ -944,9 +1140,9 @@ define(['jquery', 'underscore'], function($, _) {
             if (!name) { notify(self.i18n('templates.name_required'), 'error'); return; }
 
             var managers = [];
-            $modal.find('.dist-chip').each(function() {
+            $modal.find('.js-member.rd-mchip--on').each(function() {
                 var entry = { id: parseInt($(this).data('uid'), 10) };
-                if (type === 'percent') entry.percent = parseInt($(this).find('.js-chip-pct').val(), 10) || 0;
+                if (type === 'percent') entry.percent = parseInt($(this).find('.js-member-pct').val(), 10) || 0;
                 managers.push(entry);
             });
 
@@ -965,6 +1161,7 @@ define(['jquery', 'underscore'], function($, _) {
             $modal.find('.js-tpl-save').prop('disabled', true).text(self.i18n('common.saving'));
             req.done(function() {
                 $modal.remove();
+                toast(self.i18n('templates.saved'));
                 loadTemplates($advMount.find('.js-panel'));
             }).fail(function() {
                 $modal.find('.js-tpl-save').prop('disabled', false).text(self.i18n('common.save'));
@@ -1019,23 +1216,31 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         function syncSelfToggle($mount, statuses) {
-            var uid = currentUserId();
-            if (uid == null) { $mount.find('.js-self-online').closest('.dist-online').hide(); return; }
+            var uid   = currentUserId();
+            var $self = $mount.find('.js-self-online');
+            if (uid == null) { $self.closest('.rd-online').hide(); return; }
             var online = !Object.prototype.hasOwnProperty.call(statuses, String(uid)) ||
                          !!(statuses[String(uid)] && statuses[String(uid)].online);
-            $mount.find('.js-self-online').prop('checked', online);
+            $self.toggleClass('rd-tgl--on', online);
         }
 
-        function setStatus(userId, online, $input) {
+        // $el может быть div-тумблером (advanced) или чекбоксом (панель настроек).
+        function setStatus(userId, online, $el) {
             var uid = currentUserId();
             apiRequest('/api/status/' + parseInt(userId, 10), { online: !!online, actor_id: uid }, 'PUT')
-                .done(function() {
-                    notify(self.i18n('status.saved'), 'success'); // тумблеры сохраняются сразу
-                    updateActiveCount();
-                })
+                .done(function() { toast(self.i18n('status.saved')); })
                 .fail(function() {
-                    if ($input) $input.prop('checked', !online); // откат
+                    if ($el && $el.length) {
+                        if ($el.is('input')) {
+                            $el.prop('checked', !online);
+                        } else {
+                            $el.toggleClass('rd-tgl--on', !online);
+                            var $lbl = $el.closest('.rd-stat').find('.js-stat-lbl');
+                            $lbl.text(self.i18n(!online ? 'status.on' : 'status.off')).css('color', !online ? '#1a7a4a' : '#98a1b3');
+                        }
+                    }
                     notify(self.i18n('status.save_error'), 'error');
+                    updateActiveCount($advMount);
                 });
         }
 
@@ -1044,62 +1249,93 @@ define(['jquery', 'underscore'], function($, _) {
             $mount
                 .off('.distadv')
                 // ── навигация по сайдбару ──
-                .on('click.distadv', '.dist-nav__i[data-p]', function() {
+                .on('click.distadv', '.rd-nav__i[data-p]', function() {
                     switchPanel($mount, $(this).data('p'));
+                })
+                // ── верхние вкладки (Шаблоны / Рабочее время) в разделе «Настройки» ──
+                .on('click.distadv', '.rd-toptab[data-tab]', function() {
+                    renderSettingsSurface($mount, $mount.find('.js-panel'), $(this).data('tab'));
                 })
                 // ── обновить ростер сотрудников ──
                 .on('click.distadv', '.js-status-refresh', function() {
                     switchPanel($mount, 'status');
                 })
-                // ── статусы ──
-                .on('change.distadv', '.js-mgr-online', function() {
-                    var $i = $(this);
-                    setStatus($i.data('uid'), $i.prop('checked'), $i);
+                // ── фильтр по отделу ──
+                .on('click.distadv', '.js-dept-btn', function(e) {
+                    e.stopPropagation();
+                    toggleDeptMenu($mount);
                 })
-                .on('change.distadv', '.js-self-online', function() {
-                    var $i  = $(this);
+                .on('click.distadv', '.js-dept-dd .rd-dd__i', function() {
+                    var dept = $(this).data('dept') || '';
+                    $mount.data('deptFilter', dept);
+                    $mount.find('.js-dept-label').text(dept || self.i18n('status.all_depts'));
+                    $mount.find('.rd-dd__menu').remove();
+                    var st = $mount.data('statuses') || {};
+                    renderStatusTableRd($mount.find('.js-status-body'), getUsers(), st, dept);
+                    updateActiveCount($mount);
+                })
+                // ── тумблер статуса менеджера (div) ──
+                .on('click.distadv', '.js-mgr-online', function() {
+                    var $t  = $(this);
+                    var on  = !$t.hasClass('rd-tgl--on');
+                    $t.toggleClass('rd-tgl--on', on);
+                    var $lbl = $t.closest('.rd-stat').find('.js-stat-lbl');
+                    $lbl.text(self.i18n(on ? 'status.on' : 'status.off')).css('color', on ? '#1a7a4a' : '#98a1b3');
+                    updateActiveCount($mount);
+                    setStatus($t.data('uid'), on, $t);
+                })
+                // ── личный ONLINE-тумблер ──
+                .on('click.distadv', '.js-self-online', function() {
                     var uid = currentUserId();
                     if (uid == null) return;
-                    setStatus(uid, $i.prop('checked'), $i);
-                    $mount.find('.js-mgr-online[data-uid="' + uid + '"]').prop('checked', $i.prop('checked'));
+                    var $t = $(this);
+                    var on = !$t.hasClass('rd-tgl--on');
+                    $t.toggleClass('rd-tgl--on', on);
+                    setStatus(uid, on, $t);
+                    var $row = $mount.find('.js-mgr-online[data-uid="' + uid + '"]');
+                    if ($row.length) {
+                        $row.toggleClass('rd-tgl--on', on);
+                        $row.closest('.rd-stat').find('.js-stat-lbl')
+                            .text(self.i18n(on ? 'status.on' : 'status.off')).css('color', on ? '#1a7a4a' : '#98a1b3');
+                        updateActiveCount($mount);
+                    }
                 })
-                // ── шаблоны: список ──
+                // ── выбор строк (визуально) ──
+                .on('click.distadv', '.js-row-check', function() { $(this).toggleClass('rd-check--on'); })
+                // ── шаблоны: карточки ──
                 .on('click.distadv', '.js-tpl-add', function() { openTemplateModal(null); })
                 .on('click.distadv', '.js-tpl-edit', function() { openTemplateModal(tplCache[$(this).data('id')]); })
-                .on('click.distadv', '.js-tpl-del', function() {
-                    if (window.confirm(self.i18n('templates.confirm_delete'))) deleteTemplate($(this).data('id'));
+                .on('click.distadv', '.js-tpl-toggle', function() { $(this).toggleClass('rd-tgl--on'); })
+                // ── модалка редактора ──
+                .on('click.distadv', '.js-modal-overlay', function(e) {
+                    if (e.target === this) $(this).remove();
                 })
-                // ── шаблоны: модалка ──
-                .on('click.distadv', '.js-modal-close', function() { $(this).closest('.dist-modal').remove(); })
-                .on('click.distadv', '.js-tpl-seg .dist-seg__i', function() {
-                    var $modal = $(this).closest('.dist-modal');
+                .on('click.distadv', '.js-modal-close', function() { $(this).closest('.rd-overlay').remove(); })
+                .on('click.distadv', '.js-algo', function() {
+                    var $modal = $(this).closest('.rd-overlay');
                     var type   = $(this).data('type');
                     $modal.data('type', type);
-                    $modal.find('.dist-seg__i').removeClass('dist-seg__i--on');
-                    $(this).addClass('dist-seg__i--on');
-                    // Показать/убрать поля процентов у чипов.
-                    var isPct = (type === 'percent');
-                    $modal.find('.dist-chip').each(function() {
-                        var $c = $(this);
-                        if (isPct && !$c.find('.js-chip-pct').length) {
-                            $c.find('.dist-chip__x').before('<input type="number" class="dist-chip__pct js-chip-pct" min="0" max="100" value="0">%');
-                        } else if (!isPct) {
-                            $c.find('.js-chip-pct').remove();
-                            $c.find('span:contains("%")');
-                        }
-                    });
-                    if (!isPct) $modal.find('.dist-chip').contents().filter(function(){ return this.nodeType===3 && this.nodeValue==='%'; }).remove();
+                    $modal.find('.js-algo').removeClass('rd-algo--on').find('.js-algo-check').hide();
+                    $(this).addClass('rd-algo--on').find('.js-algo-check').show();
+                    // Проценты у участников — только для типа percent.
+                    $modal.find('.js-member-pct').toggle(type === 'percent');
                 })
-                .on('change.distadv', '.js-tpl-mgr-add', function() {
-                    var uid = $(this).val();
-                    if (!uid) return;
-                    var $modal = $(this).closest('.dist-modal');
-                    var name   = $(this).find('option:selected').text();
-                    addChip($modal.find('.js-tpl-chips'), parseInt(uid, 10), name, 0, $modal.data('type') === 'percent');
-                    $(this).val('');
+                .on('click.distadv', '.js-member', function(e) {
+                    if ($(e.target).hasClass('js-member-pct')) return; // клик по полю % не переключает
+                    var $m = $(this);
+                    var on = !$m.hasClass('rd-mchip--on');
+                    $m.toggleClass('rd-mchip--on', on);
+                    $m.find('.js-member-check').toggle(on);
                 })
-                .on('click.distadv', '.js-chip-x', function() { $(this).closest('.dist-chip').remove(); })
-                .on('click.distadv', '.js-tpl-save', function() { saveTemplate($(this).closest('.dist-modal')); });
+                .on('click.distadv', '.js-tpl-save', function() { saveTemplate($(this).closest('.rd-overlay')); })
+                .on('click.distadv', '.js-tpl-del', function() {
+                    var id = $(this).data('id');
+                    if (!id) return;
+                    if (window.confirm(self.i18n('templates.confirm_delete'))) {
+                        $(this).closest('.rd-overlay').remove();
+                        deleteTemplate(id);
+                    }
+                });
         }
 
         // ─── Schedules tab ────────────────────────────────────────────────────

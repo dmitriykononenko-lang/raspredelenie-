@@ -20,7 +20,11 @@
   "nav": {
     "templates": "Templates",
     "worktime": "Working time",
-    "reports": "Reports"
+    "reports": "Reports",
+    "report_dist": "Distribution report",
+    "report_status": "Status report",
+    "report_deputy": "Deputy report",
+    "settings": "Settings"
   },
   "templates": {
     "title": "Distribution templates",
@@ -44,7 +48,22 @@
     "f_schedule": "Working hours only",
     "type_round_robin": "Round Robin",
     "type_workload": "By workload",
-    "type_percent": "Percent"
+    "type_percent": "Percent",
+    "members": "members",
+    "cond_pipeline": "Pipeline",
+    "cond_name": "Name",
+    "cond_budget": "Budget",
+    "cond_tags": "Tags",
+    "cond_any": "Any conditions",
+    "cond_add": "condition",
+    "f_conditions": "Trigger conditions",
+    "f_members": "Members",
+    "f_extra": "Extra",
+    "algo_rr": "Leads are handed to members in turn, round-robin.",
+    "algo_wl": "A lead goes to whoever has fewer open deals.",
+    "algo_pct": "Leads are split among members by set percentages.",
+    "delete": "Delete template",
+    "saved": "Template saved"
   },
   "status": {
     "online": "ONLINE",
@@ -57,7 +76,13 @@
     "load_error": "Failed to load statuses. Check the server URL in settings.",
     "save_error": "Failed to save status. Please try again.",
     "saved": "Saved",
-    "active": "In distribution: {n} of {total}"
+    "active": "In distribution: {n} of {total}",
+    "title_page": "Lead distribution",
+    "participate": "Active:",
+    "all_depts": "All departments",
+    "on": "On",
+    "off": "Off",
+    "of": "of"
   },
   "settings": {
     "title": "Deal Distribution — Settings",
@@ -101,5 +126,23 @@
   },
   "left_menu": {
     "title": "Distribution"
+  },
+  "report": {
+    "dist_desc": "Facts of lead distribution and reassignment between managers.",
+    "status_desc": "History of managers turning distribution on/off.",
+    "deputy_desc": "Actual lead transfers between owners and deputies.",
+    "deputy_empty": "No items found for the selected conditions.",
+    "empty": "No records yet.",
+    "load_error": "Failed to load the report.",
+    "col_date": "Date",
+    "col_result": "Status",
+    "col_stage": "Stage",
+    "col_deal": "Deal",
+    "col_was": "From",
+    "col_became": "To"
+  },
+  "hours": {
+    "desc": "Set working hours per manager or per department.",
+    "soon": "The schedule grid is coming in the next update. For now, schedules are set on the “Schedules” tab in widget settings."
   }
 }
