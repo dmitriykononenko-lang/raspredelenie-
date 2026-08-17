@@ -26,7 +26,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.1.2';
+        var WIDGET_VERSION = '1.1.3';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -764,25 +764,44 @@ define(['jquery', 'underscore'], function($, _) {
             return palette[Math.abs(parseInt(id, 10) || 0) % palette.length];
         }
 
+        // Ищем видимую рабочую область виджета. КЛЮЧЕВОЕ: НЕ монтируемся после
+        // заголовка внутри .content__top__preset — amo держит этот блок со
+        // сдвигом вверх (transform/отрицательный top), из-за чего верх страницы
+        // уезжает за экран, а снизу остаётся пустое место. Контейнер
+        // #work-area-<code> находится в нормальном потоке и виден целиком.
+        function findWorkArea() {
+            var code = (self.params && self.params.widget_code) || (getSettings().widget_code) || '';
+            var $a = code ? $('#work-area-' + code) : $();
+            if (!$a.length) $a = $('div[id^="work-area-"]:visible').first();
+            if (!$a.length) $a = $('div[id^="work-area-"]').first();
+            // Явно НЕ берём .content__top__preset (сдвинут вверх).
+            if (!$a.length) $a = $('.widget_settings_block__content_inner, .widget_settings_block, .list-settings__work-area').first();
+            return $a;
+        }
+
+        function mountAdvancedPage(useWide) {
+            var attempts = 0;
+            function mount() {
+                var $area = findWorkArea();
+                if (!$area.length) {
+                    if (attempts++ < 25) { setTimeout(mount, 120); return; }
+                    // Последний фолбэк — основная область контента, но не preset.
+                    $area = $('#page_holder .content:not(.content__top__preset), #content').first();
+                    if (!$area.length) $area = $(document.body);
+                }
+                if ($area.find('.dist-adv').length) return; // уже отрисовано
+                $area.empty();
+                var $mount = $('<div class="dist-adv' + (useWide ? ' dist-adv--wide' : '') + '"></div>');
+                $area.append($mount);
+                renderAdvancedPage($mount);
+            }
+            mount();
+        }
+
+        // Страница «Расширенные настройки» виджета (Настройки → Распределение сделок).
         self.advancedSettings = function() {
             injectCss();
-            var titleText = $.trim(self.i18n('advanced.title') || 'Распределение сделок');
-            var $title = $();
-            $('h1, h2, h3').each(function() {
-                if ($title.length) return;
-                if ($.trim($(this).text()) === titleText) $title = $(this);
-            });
-
-            var $mount;
-            if ($title.length) {
-                $mount = $('<div class="dist-adv"></div>');
-                $title.after($mount);
-            } else {
-                $mount = $('<div class="dist-adv dist-adv--wide"></div>');
-                var $area = $('.widget_advanced_settings, .list-pipelines__hidden').first();
-                ($area.length ? $area : $(document.body)).append($mount);
-            }
-            renderAdvancedPage($mount);
+            mountAdvancedPage(true);
             return true;
         };
 
@@ -790,30 +809,7 @@ define(['jquery', 'underscore'], function($, _) {
         // amoCRM создаёт асинхронно — ищем с повтором, иначе страница пустая.
         self.initMenuPage = function(params) {
             injectCss();
-            var attempts = 0;
-            function findArea() {
-                var code = (self.params && self.params.widget_code) ||
-                           (getSettings().widget_code) || '';
-                var $a = code ? $('#work-area-' + code) : $();
-                if (!$a.length) $a = $('div[id^="work-area-"]:visible').first();
-                if (!$a.length) $a = $('div[id^="work-area-"]').first();
-                if (!$a.length) $a = $('.work-area, #work-area').first();
-                return $a;
-            }
-            function mount() {
-                var $area = findArea();
-                if (!$area.length) {
-                    if (attempts++ < 25) { setTimeout(mount, 120); return; }
-                    $area = $('.easy-element, #page_holder .content, #content').first();
-                    if (!$area.length) $area = $(document.body);
-                }
-                if ($area.find('.dist-adv').length) return; // уже отрисовано
-                $area.empty();
-                var $mount = $('<div class="dist-adv dist-adv--wide"></div>');
-                $area.append($mount);
-                renderAdvancedPage($mount);
-            }
-            mount();
+            mountAdvancedPage(true);
             return true;
         };
 

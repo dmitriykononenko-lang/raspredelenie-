@@ -489,8 +489,14 @@
 /* ============================================================
    Advanced settings — полностраничный вид (KO:AGENCY)
    ============================================================ */
-.dist-adv { margin: 12px 0; }
+.dist-adv { margin: 12px 0; position: relative; z-index: 1; }
 .dist-adv--wide { max-width: 1080px; }
+/* Страховка от «уехавшего» контейнера amo (.content__top__preset со сдвигом):
+   если виджет всё же оказался внутри такого блока — компенсируем и не даём
+   пустоты снизу. */
+.content__top__preset .dist-adv { transform: none; }
+.rd-page { min-height: auto; }
+.rd-body { min-height: 520px; }
 
 .dist-page {
     display: flex;
