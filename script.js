@@ -26,7 +26,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.1.7';
+        var WIDGET_VERSION = '1.1.8';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -1064,12 +1064,15 @@ define(['jquery', 'underscore'], function($, _) {
                 loadStageNames();
 
                 if (kind === 'dist') {
+                    // Колонки как в дизайне: Дата · Статус · Имя · Группа · Этап · Сделка.
+                    var groupOf = function(id) { var u = _.find(users, function(x){ return String(x.id) === String(id); }); return (u && u.group) ? u.group : '—'; };
+                    var GRID = 'display:grid;grid-template-columns:1.15fr 1.1fr 1.2fr 1.3fr 1.3fr .8fr;gap:12px';
                     apiRequest('/api/log?limit=200', null, 'GET').done(function(resp) {
                         var rows = (resp && (resp.log || resp.items || resp)) || [];
                         if (!rows.length) { $body.html('<div class="rd-empty">' + _.escape(self.i18n('report.empty')) + '</div>'); return; }
-                        var h = ['<div class="rd-thead" style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr 1.4fr .8fr;gap:12px"><div>' +
+                        var h = ['<div class="rd-thead" style="' + GRID + '"><div>' +
                                  _.escape(self.i18n('report.col_date')) + '</div><div>' + _.escape(self.i18n('report.col_result')) + '</div><div>' +
-                                 _.escape(self.i18n('status.col_manager')) + '</div><div>' + _.escape(self.i18n('report.col_stage')) + '</div><div>' +
+                                 _.escape(self.i18n('status.col_manager')) + '</div><div>Группа</div><div>' + _.escape(self.i18n('report.col_stage')) + '</div><div>' +
                                  _.escape(self.i18n('report.col_deal')) + '</div></div>'];
                         _.each(rows, function(l) {
                             // Хранилище пишет manager_id / reason (не user_id / result).
@@ -1078,10 +1081,11 @@ define(['jquery', 'underscore'], function($, _) {
                             var label  = (typeof LOG_REASONS !== 'undefined' && LOG_REASONS[reason]) ? LOG_REASONS[reason] : (reason || '—');
                             var ok     = (reason === 'assigned' || reason === 'history_match' || reason === 'redistributed');
                             var badge  = ok ? 'rd-badge--algo' : 'rd-badge--muted';
-                            h.push('<div class="rd-row" style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr 1.4fr .8fr;gap:12px;align-items:center;font-size:13px">' +
+                            h.push('<div class="rd-row" style="' + GRID + ';align-items:center;font-size:13px">' +
                               '<div class="rd-mono" style="color:#586173;font-size:12px">' + _.escape(fmtTs(l.ts || l.time || l.date)) + '</div>' +
                               '<div><span class="rd-badge ' + badge + '">' + _.escape(label) + '</span></div>' +
                               '<div style="font-weight:700">' + _.escape(nameOf(mid)) + '</div>' +
+                              '<div style="color:#586173">' + _.escape(mid ? groupOf(mid) : '—') + '</div>' +
                               '<div style="color:#586173">' + _.escape(stageName(l.stage_id || l.stage)) + '</div>' +
                               '<div class="rd-mono" style="font-size:12.5px">' + _.escape(l.lead_id || l.deal || '—') + '</div></div>');
                         });
