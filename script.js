@@ -26,7 +26,7 @@ define(['jquery', 'underscore'], function($, _) {
         }
 
         // ─── Constants ────────────────────────────────────────────────────────
-        var WIDGET_VERSION = '1.1.6';
+        var WIDGET_VERSION = '1.1.7';
 
         // Адрес бэкенда по умолчанию — вшит, чтобы виджет работал сразу после
         // установки без заполнения поля. Поле server_url в настройках остаётся
@@ -153,7 +153,7 @@ define(['jquery', 'underscore'], function($, _) {
                 '      <div class="dist-field">',
                 '        <label class="dist-label">Воронка</label>',
                 '        <select class="js-rule-pipeline dist-select" name="pipeline_id">',
-                '          <option value="">— выберите —</option>',
+                '          <option value="">Любая — где стоит действие</option>',
                 '        </select>',
                 '      </div>',
                 '      <div class="dist-field">',
@@ -163,6 +163,7 @@ define(['jquery', 'underscore'], function($, _) {
                 '        </select>',
                 '      </div>',
                 '    </div>',
+                '    <small class="dist-hint">Действие «Распределение» уже стоит на нужном этапе в Digital Pipeline, поэтому воронку/этап можно оставить «Любая/Любой» — правило сработает там, где стоит действие. Указывайте их, только если для разных этапов нужны разные менеджеры (тогда добавьте несколько правил).</small>',
 
                 // Managers
                 '    <div class="dist-field">',
@@ -416,7 +417,9 @@ define(['jquery', 'underscore'], function($, _) {
                     filters:            filters
                 };
 
-                if (rule.pipeline_id && rule.managers.length) {
+                // Воронка/этап опциональны: правило с «Любая/Любой» работает там,
+                // где стоит действие. Достаточно наличия менеджеров.
+                if (rule.managers.length) {
                     rules.push(rule);
                 }
             });
