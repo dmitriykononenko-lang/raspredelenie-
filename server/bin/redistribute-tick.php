@@ -103,6 +103,7 @@ foreach ($accounts as $accountId) {
 
         try {
             $api->updateLeadResponsible($accountId, $leadId, $next);
+            try { $api->reassignOpenTasks($accountId, $leadId, $next); } catch (\Throwable $t) {}
         } catch (\Throwable $ex) {
             $logger->warning('Redistribute: reassign failed', ['lead_id' => $leadId, 'err' => $ex->getMessage()]);
             $e['next_at'] = $now + (int) $e['after_sec'];

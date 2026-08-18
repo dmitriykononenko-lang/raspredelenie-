@@ -236,4 +236,37 @@ class ApiClient
 
         return $counts;
     }
+
+    /**
+     * Переназначить открытые (незавершённые) задачи сделки на нового ответственного.
+     * Вызывается при смене ответственного (распределение/перераспределение).
+     * @return int число переназначенных задач
+     */
+    public function reassignOpenTasks(string $accountId, int $leadId, int $newUserId): int
+    {
+        try {
+            $data = $this->request($accountId, 'GET',
+                '/tasks?filter[entity_type]=leads&filter[entity_id]=' . $leadId .
+                '&filter[is_completed]=0&limit=100');
+        } catch (\Throwable $e) {
+            $this->logger->warning('reassignOpenTasks: fetch failed', ['lead_id' => $leadId, 'err' => $e->getMessage()]);
+            return 0;
+        }
+        $tasks   = $data['_embedded']['tasks'] ?? [];
+        $payload = [];
+        foreach ($tasks as $t) {
+            if (!empty($t['is_completed'])) { continue; }
+            if ((int) ($t['responsible_user_id'] ?? 0) === $newUserId) { continue; }
+            $payload[] = ['id' => (int) $t['id'], 'responsible_user_id' => $newUserId];
+        }
+        if (!$payload) { return 0; }
+        try {
+            $this->request($accountId, 'PATCH', '/tasks', ['json' => $payload]);
+        } catch (\Throwable $e) {
+            $this->logger->warning('reassignOpenTasks: patch failed', ['lead_id' => $leadId, 'err' => $e->getMessage()]);
+            return 0;
+        }
+        $this->logger->info('Open tasks reassigned', ['lead_id' => $leadId, 'count' => count($payload), 'user_id' => $newUserId]);
+        return count($payload);
+    }
 }

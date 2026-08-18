@@ -88,6 +88,7 @@ class DistributionService
                     'user_id' => $existingId,
                 ]);
                 $this->apiClient->updateLeadResponsible($accountId, $leadId, $existingId);
+                try { $this->apiClient->reassignOpenTasks($accountId, $leadId, $existingId); } catch (\Throwable $t) {}
                 $this->log->record($accountId, $leadId, $pipelineId, $stageId, $existingId, $method, 'history_match');
                 return ['assigned_to_id' => $existingId, 'assigned_to_name' => (string) $existingId];
             }
@@ -133,6 +134,7 @@ class DistributionService
 
         // ── 7. Assign ─────────────────────────────────────────────────────────
         $this->apiClient->updateLeadResponsible($accountId, $leadId, $chosenId);
+        try { $this->apiClient->reassignOpenTasks($accountId, $leadId, $chosenId); } catch (\Throwable $t) {}
 
         // ── 8. Log ────────────────────────────────────────────────────────────
         $this->log->record($accountId, $leadId, $pipelineId, $stageId, $chosenId, $method, 'assigned');
