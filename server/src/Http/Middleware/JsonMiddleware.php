@@ -29,6 +29,12 @@ class JsonMiddleware implements MiddlewareInterface
 
         $response = $handler->handle($request);
 
+        // Respect a Content-Type the handler already set (e.g. text/html for the admin panel).
+        // JSON endpoints set application/json themselves, so this only frees non-JSON responses.
+        if ($response->hasHeader('Content-Type')) {
+            return $response;
+        }
+
         return $response->withHeader('Content-Type', 'application/json');
     }
 }
