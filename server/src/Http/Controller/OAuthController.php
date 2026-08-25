@@ -46,7 +46,7 @@ class OAuthController
         // (2) Режим confirm-only: нет кода/домена, либо не настроен OAuth
         // (долгосрочный токен / пустые креды). Просто подтверждаем установку 200 —
         // amoCRM активирует виджет, не откатывая его в «Отключено».
-        if (!$code || !$domain || $longTerm !== '' || !$clientId || !$clientSecret || !$redirectUri) {
+        if (!$code || !$domain || !$clientId || !$clientSecret || !$redirectUri) {
             $this->logger->warning('OAuth: режим confirm-only, обмен пропущен', ['domain' => $domain]);
             return $this->html($response, 'Установка завершена. Можно закрыть это окно.');
         }
