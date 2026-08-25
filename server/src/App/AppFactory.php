@@ -15,6 +15,7 @@ use DealDist\Http\Controller\SettingsController;
 use DealDist\Http\Controller\StatusController;
 use DealDist\Http\Controller\TemplateController;
 use DealDist\Http\Controller\WebhookController;
+use DealDist\Http\Controller\AdminController;
 use DI\ContainerBuilder;
 use Monolog\Handler\StreamHandler;
 use Monolog\Level;
@@ -94,6 +95,10 @@ class AppFactory
         $app->post('/webhook/leads',                    WebhookController::class    . ':handle');
 
         $app->get('/oauth/callback',                    OAuthController::class      . ':callback');
+
+        // Admin panel (KO:AGENCY)
+        $app->get('/admin', AdminController::class . ':page');
+        $app->get('/admin/api/overview', AdminController::class . ':overview');
 
         return $app;
     }
