@@ -99,6 +99,8 @@ class AppFactory
         // Admin panel (KO:AGENCY)
         $app->get('/admin', AdminController::class . ':page');
         $app->get('/admin/api/overview', AdminController::class . ':overview');
+        $app->post('/admin/api/extend', AdminController::class . ':extend');
+        $app->post('/admin/api/set-until', AdminController::class . ':setUntil');
 
         return $app;
     }

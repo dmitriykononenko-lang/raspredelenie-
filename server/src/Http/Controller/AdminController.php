@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DealDist\Http\Controller;
 
+use DealDist\Billing\SubscriptionStore;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -52,6 +53,9 @@ class AdminController
         $ltAccount = trim((string) ($_ENV['AMO_ACCOUNT_ID'] ?? ''));
         $ltDomain  = trim((string) ($_ENV['AMO_BASE_DOMAIN'] ?? ''));
         $ltToken   = trim((string) ($_ENV['AMO_LONG_TERM_TOKEN'] ?? ''));
+
+        $subs       = new SubscriptionStore($this->storage);
+        $enforce    = ((string) ($_ENV['BILLING_ENFORCE'] ?? '')) === '1';
 
         $accounts = [];
         foreach ($this->accountIds() as $acc) {
@@ -114,6 +118,15 @@ class AdminController
             $schedDir = $this->storage . '/schedules/' . $acc;
             $schedCount = is_dir($schedDir) ? count(glob($schedDir . '/*.json') ?: []) : 0;
 
+            // подписки (срок действия) по каждому виджету
+            $subRead = $subs->read((string) $acc);
+            $subscriptions = [];
+            foreach (SubscriptionStore::WIDGETS as $wk) {
+                $st = $subs->status((string) $acc, $wk);
+                $st['history'] = $subRead[$wk]['history'] ?? [];
+                $subscriptions[$wk] = $st;
+            }
+
             $accounts[] = [
                 'account_id'    => (string) $acc,
                 'domain'        => $domain,
@@ -130,13 +143,15 @@ class AdminController
                 'last_reason'   => $lastReason,
                 'last_ts'       => $lastTs,
                 'log'           => $log,
+                'subscriptions' => $subscriptions,
             ];
         }
 
         usort($accounts, static fn($a, $b) => ($b['last_ts'] <=> $a['last_ts']));
 
         $out = [
-            'generated_at' => time(),
+            'generated_at'    => time(),
+            'billing_enforce' => $enforce,
             'widgets'      => [
                 'raspredelenie' => [
                     'title'    => 'Распределение',
@@ -153,6 +168,80 @@ class AdminController
 
         $response->getBody()->write(json_encode($out, JSON_UNESCAPED_UNICODE));
         return $response->withStatus(200)->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /* --------------------------- API: продление -------------------------- */
+
+    private function jsonOut(ResponseInterface $response, array $data, int $status = 200): ResponseInterface
+    {
+        $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE));
+        return $response->withStatus($status)->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /** @return array<string,mixed> тело запроса (JSON или form). */
+    private function body(ServerRequestInterface $request): array
+    {
+        $b = $request->getParsedBody();
+        if (is_array($b) && $b) { return $b; }
+        $raw = (string) $request->getBody();
+        if ($raw !== '') {
+            $d = json_decode($raw, true);
+            if (is_array($d)) { return $d; }
+        }
+        return $request->getQueryParams();
+    }
+
+    /** POST /admin/api/extend  { account_id, widget, months } */
+    public function extend(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    {
+        if (!$this->authorized($request)) {
+            return $this->jsonOut($response, ['error' => 'unauthorized'], 401);
+        }
+        $b       = $this->body($request);
+        $account = preg_replace('/[^0-9]/', '', (string) ($b['account_id'] ?? ''));
+        $widget  = (string) ($b['widget'] ?? '');
+        $months  = (int) ($b['months'] ?? 0);
+        if ($account === '' || !in_array($widget, SubscriptionStore::WIDGETS, true) || $months === 0) {
+            return $this->jsonOut($response, ['error' => 'bad_request', 'need' => 'account_id, widget(raspredelenie|dubli), months(!=0)'], 400);
+        }
+        $subs = new SubscriptionStore($this->storage);
+        $res  = $subs->extend($account, $widget, $months, 'admin');
+        if ($res === null) {
+            return $this->jsonOut($response, ['error' => 'extend_failed'], 500);
+        }
+        $st = $subs->status($account, $widget);
+        return $this->jsonOut($response, ['ok' => true, 'account_id' => $account, 'widget' => $widget, 'subscription' => $st + ['history' => $res['history']]]);
+    }
+
+    /** POST /admin/api/set-until  { account_id, widget, date: "YYYY-MM-DD"|"" } */
+    public function setUntil(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    {
+        if (!$this->authorized($request)) {
+            return $this->jsonOut($response, ['error' => 'unauthorized'], 401);
+        }
+        $b       = $this->body($request);
+        $account = preg_replace('/[^0-9]/', '', (string) ($b['account_id'] ?? ''));
+        $widget  = (string) ($b['widget'] ?? '');
+        $date    = trim((string) ($b['date'] ?? ''));
+        if ($account === '' || !in_array($widget, SubscriptionStore::WIDGETS, true)) {
+            return $this->jsonOut($response, ['error' => 'bad_request'], 400);
+        }
+        $until = null;
+        if ($date !== '') {
+            // конец дня по дате, чтобы «до 12.03» включал весь день
+            $ts = strtotime($date . ' 23:59:59');
+            if ($ts === false) {
+                return $this->jsonOut($response, ['error' => 'bad_date', 'format' => 'YYYY-MM-DD'], 400);
+            }
+            $until = $ts;
+        }
+        $subs = new SubscriptionStore($this->storage);
+        $res  = $subs->setUntil($account, $widget, $until, 'admin');
+        if ($res === null) {
+            return $this->jsonOut($response, ['error' => 'set_failed'], 500);
+        }
+        $st = $subs->status($account, $widget);
+        return $this->jsonOut($response, ['ok' => true, 'account_id' => $account, 'widget' => $widget, 'subscription' => $st + ['history' => $res['history']]]);
     }
 
     /* ----------------------------- helpers ------------------------------ */
@@ -335,11 +424,33 @@ td.mono{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted
 .note .lbl{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--red);border:1.5px solid var(--red);border-radius:6px;padding:4px 9px;margin-bottom:12px}
 .note b{font-weight:600}
 .err{border:1.5px solid var(--red);color:var(--red);padding:14px 16px;border-radius:8px;font-size:13px}
+/* subscriptions */
+.subs{margin-top:18px;border-top:1.5px solid #ededed;padding-top:16px;display:flex;flex-direction:column;gap:14px}
+.sub{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px}
+.sub-name{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;min-width:118px}
+.sub-until{font-size:13px;color:var(--ink)}
+.sub-until b{font-weight:600}
+.sub-badge{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;border:1.5px solid;border-radius:6px;padding:3px 9px}
+.sub-badge.active{border-color:#1f9d57;color:#1f9d57}
+.sub-badge.soon{border-color:#c98a00;color:#c98a00}
+.sub-badge.expired{border-color:var(--red);color:var(--red)}
+.sub-badge.none{border-color:var(--soft);color:var(--muted)}
+.ext{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;align-items:center}
+.ext button{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;letter-spacing:0.03em;padding:6px 11px;border:1.5px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);cursor:pointer;transition:.12s}
+.ext button:hover{background:var(--ink);color:#fff}
+.ext button.primary{border-color:var(--red);color:var(--red)}
+.ext button.primary:hover{background:var(--red);color:#fff}
+.ext input[type=date]{font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px 8px;border:1.5px solid var(--soft);border-radius:7px;color:var(--ink)}
+.sub-hist{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:0.02em;flex-basis:100%;margin-top:2px}
+.enforce{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:0.04em;text-transform:uppercase;padding:4px 10px;border-radius:6px;border:1.5px solid var(--soft);color:var(--muted)}
+.enforce.on{border-color:var(--red);color:var(--red)}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:13px;padding:10px 18px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+.toast.show{opacity:1}
 </style></head>
 <body><div class="wrap">
 <div class="top">
   <div><div class="brand">KO&nbsp;:&nbsp;AGENCY</div><div class="eyebrow">Админка виджетов · панель управления</div></div>
-  <div class="top-r"><div class="gen" id="gen"></div><button class="refresh" id="refresh">↻ Обновить</button></div>
+  <div class="top-r"><span class="enforce" id="enforce"></span><div class="gen" id="gen"></div><button class="refresh" id="refresh">↻ Обновить</button></div>
 </div>
 <div class="tabs">
   <button class="tab on" data-t="raspredelenie">Распределение<span class="n" id="tabn"></span></button>
@@ -347,6 +458,7 @@ td.mono{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted
 </div>
 <div id="content"><div class="empty">Загрузка…</div></div>
 </div>
+<div class="toast" id="toast"></div>
 <script>
 var KEY=new URLSearchParams(location.search).get('key')||'';
 var DATA=null, TAB='raspredelenie';
@@ -362,10 +474,57 @@ function tokenPill(t){
 function rulePill(a){ return a.rules_count? '<span class="pill">правил '+a.rules_count+' · менеджеров '+a.managers_count+'</span>' : '<span class="pill red">правил нет</span>'; }
 function onlinePill(a){ return '<span class="pill '+(a.online_count?'solid':'mut')+'">онлайн '+a.online_count+'/'+a.users_total+'</span>'; }
 function reasonCls(r){ r=r||''; if(r==='error') return 'rsn err'; if(r.indexOf('skip')===0||r==='no_managers') return 'rsn skip'; return 'rsn ok'; }
+var WT={raspredelenie:'Распределение',dubli:'Дубли'};
+var SUBST={active:'активна',soon:'истекает',expired:'истекла',none:'не задана'};
+function fmtDate(t){ if(!t) return '—'; try{return new Date(t*1000).toLocaleDateString('ru-RU');}catch(e){return String(t);} }
+function toast(msg){ var t=document.getElementById('toast'); if(!t)return; t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(function(){t.classList.remove('show');},2600); }
+function subRow(acc,wk,s){
+  s=s||{status:'none',paid_until:null,days_left:null,history:[]};
+  var until = s.paid_until? ('оплачено до <b>'+fmtDate(s.paid_until)+'</b>') : 'срок не задан';
+  var left  = (s.status==='active'||s.status==='soon')&&s.days_left!=null? ' · осталось '+s.days_left+' дн'
+            : (s.status==='expired'&&s.days_left!=null? ' · истекла '+Math.abs(s.days_left)+' дн назад' : '');
+  var h = (s.history&&s.history.length)? s.history.slice(-1)[0] : null;
+  var hist = h? ('послед.: '+(h.action==='extend'?('+'+h.months+' мес'):'установлено')+' → '+fmtDate(h.until)+(h.ts?(' ('+new Date(h.ts*1000).toLocaleDateString('ru-RU')+')'):'')) : '';
+  var did='d_'+acc+'_'+wk;
+  return '<div class="sub">'
+    +'<span class="sub-name">'+esc(WT[wk]||wk)+'</span>'
+    +'<span class="sub-badge '+s.status+'">'+SUBST[s.status]+'</span>'
+    +'<span class="sub-until">'+until+left+'</span>'
+    +'<span class="ext">'
+      +'<button onclick="doExt(\''+acc+'\',\''+wk+'\',1)">+1 мес</button>'
+      +'<button onclick="doExt(\''+acc+'\',\''+wk+'\',3)">+3</button>'
+      +'<button onclick="doExt(\''+acc+'\',\''+wk+'\',6)">+6</button>'
+      +'<button class="primary" onclick="doExt(\''+acc+'\',\''+wk+'\',12)">+12</button>'
+      +'<input type="date" id="'+did+'">'
+      +'<button onclick="doSet(\''+acc+'\',\''+wk+'\',\''+did+'\')">Задать</button>'
+    +'</span>'
+    +(hist?('<span class="sub-hist">'+esc(hist)+'</span>'):'')
+    +'</div>';
+}
+function subsBlock(a){
+  var s=a.subscriptions||{};
+  return '<div class="subs">'+subRow(a.account_id,'raspredelenie',s.raspredelenie)+subRow(a.account_id,'dubli',s.dubli)+'</div>';
+}
+function post(url,body){
+  return fetch(url+'?key='+encodeURIComponent(KEY),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){ return r.json().then(function(j){ if(!r.ok||j.error) throw new Error(j.error||('HTTP '+r.status)); return j; }); });
+}
+function doExt(acc,wk,months){
+  post('/admin/api/extend',{account_id:acc,widget:wk,months:months}).then(function(j){
+    toast(WT[wk]+' · продлено на '+months+' мес → '+fmtDate(j.subscription.paid_until)); load();
+  }).catch(function(e){ toast('Ошибка: '+e.message); });
+}
+function doSet(acc,wk,inputId){
+  var el=document.getElementById(inputId); var d=el?el.value:'';
+  post('/admin/api/set-until',{account_id:acc,widget:wk,date:d}).then(function(j){
+    toast(WT[wk]+' · срок '+(d?('→ '+fmtDate(j.subscription.paid_until)):'снят')); load();
+  }).catch(function(e){ toast('Ошибка: '+e.message); });
+}
 function render(){
   var c=document.getElementById('content');
   if(!DATA){ c.innerHTML='<div class="empty">Загрузка…</div>'; return; }
   var g=document.getElementById('gen'); if(g&&DATA.generated_at){ g.textContent='обновлено '+new Date(DATA.generated_at*1000).toLocaleTimeString('ru-RU'); }
+  var en=document.getElementById('enforce'); if(en){ var on=!!DATA.billing_enforce; en.textContent=on?'блокировка: вкл':'блокировка: выкл (учёт)'; en.className='enforce'+(on?' on':''); en.title=on?'Виджет распределения останавливается по истечении срока':'Срок только фиксируется, распределение не блокируется'; }
   var w=DATA.widgets[TAB];
   if(TAB==='dubli'){ c.innerHTML='<div class="note"><span class="lbl">Скоро</span><br><b>Дубли</b> — раздел подключается. '+esc(w.note||'')+'</div>'; return; }
   var accs=w.accounts||[];
@@ -385,6 +544,7 @@ function render(){
     html+='<div class="card"><div class="card-h"><h3>'+esc(a.domain||('account '+a.account_id))+'</h3><span class="idx">'+idx+'</span></div>'
       +'<div class="dom">id '+esc(a.account_id)+' · метод '+esc(a.method)+' · расписаний '+a.schedules+(a.pending?(' · повтор в очереди '+a.pending):'')+'</div>'
       +'<div class="row">'+tokenPill(a.token)+rulePill(a)+onlinePill(a)+'</div>';
+    html+=subsBlock(a);
     if(a.log && a.log.length){
       html+='<details><summary>Лог распределения · '+a.log.length+'</summary><table><tr><th>Время</th><th>Сделка</th><th>Этап</th><th>Менеджер</th><th>Причина</th></tr>';
       a.log.slice().reverse().forEach(function(e){
