@@ -105,19 +105,48 @@ build() {
     mkdir -p "$DIST_DIR"
     rm -f "$DIST_DIR"/deal-distribution-widget-*.zip
 
-    # Build ZIP (AmoCRM expects files at the root of the archive)
+    # Build ZIP (AmoCRM expects files at the root of the archive).
+    # amoCRM требует widget.code и widget.secret_key в манифесте (в т.ч. для
+    # приватных интеграций — иначе «widget not found» / «Secret key not correct»).
+    # Если заданы AMO_WIDGET_CODE и AMO_CLIENT_SECRET — подставляем их в manifest.json
+    # на этапе сборки (в git не храним). Иначе собираем как есть и предупреждаем.
     log "Building $out_name..."
     cd "$WIDGET_DIR"
 
-    zip -r "$out_path" \
-        manifest.json \
-        script.js \
-        css/ \
-        i18n/ \
-        images/ \
-        --exclude "*.DS_Store" \
-        --exclude "*Thumbs.db" \
-        -q
+    if [[ -n "${AMO_WIDGET_CODE:-}" && -n "${AMO_CLIENT_SECRET:-}" ]]; then
+        local stage
+        stage=$(mktemp -d)
+        # shellcheck disable=SC2064
+        trap "rm -rf '$stage'" EXIT INT TERM
+        AMO_WIDGET_CODE="$AMO_WIDGET_CODE" AMO_CLIENT_SECRET="$AMO_CLIENT_SECRET" \
+        python3 - "$MANIFEST" "$stage/manifest.json" <<'PYEOF'
+import json, os, sys
+src, dst = sys.argv[1], sys.argv[2]
+data = json.load(open(src))
+data['widget']['code']       = os.environ['AMO_WIDGET_CODE']
+data['widget']['secret_key'] = os.environ['AMO_CLIENT_SECRET']
+json.dump(data, open(dst, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+print('  ✓ manifest.json: code=%s secret set' % os.environ['AMO_WIDGET_CODE'])
+PYEOF
+        cp "$WIDGET_DIR/script.js" "$stage/script.js"
+        cp -r "$WIDGET_DIR/css" "$WIDGET_DIR/i18n" "$WIDGET_DIR/images" "$stage/"
+        ( cd "$stage" && zip -r "$out_path" manifest.json script.js css/ i18n/ images/ \
+            --exclude "*.DS_Store" --exclude "*Thumbs.db" -q )
+        ok "code/secret_key подставлены из окружения"
+    else
+        zip -r "$out_path" \
+            manifest.json \
+            script.js \
+            css/ \
+            i18n/ \
+            images/ \
+            --exclude "*.DS_Store" \
+            --exclude "*Thumbs.db" \
+            -q
+        echo "  ⚠ AMO_WIDGET_CODE / AMO_CLIENT_SECRET не заданы — в архиве НЕТ" >&2
+        echo "    widget.code/secret_key. Для реальной установки задай их:" >&2
+        echo "    AMO_WIDGET_CODE=<код> AMO_CLIENT_SECRET=<секрет> ./build.sh" >&2
+    fi
 
     local size
     size=$(du -sh "$out_path" | cut -f1)

@@ -43,6 +43,16 @@
   },
   "dp": {
     "webhook_url": "https://raspredelenie.koagency.ru/webhook/leads",
-    "action_multiple": false
+    "action_multiple": false,
+    "settings": {
+      "distribution_method": {
+        "name": "settings.method_label",
+        "type": "list",
+        "values": {
+          "round_robin": "settings.method_round_robin",
+          "workload": "settings.method_workload"
+        }
+      }
+    }
   }
 }
