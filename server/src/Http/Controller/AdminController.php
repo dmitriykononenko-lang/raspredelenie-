@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DealDist\Http\Controller;
 
+use DealDist\Billing\BillingService;
 use DealDist\Billing\SubscriptionStore;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -244,6 +245,34 @@ class AdminController
         return $this->jsonOut($response, ['ok' => true, 'account_id' => $account, 'widget' => $widget, 'subscription' => $st + ['history' => $res['history']]]);
     }
 
+    /**
+     * POST /admin/api/billing-link  { account_id, widget, plan_id, users, email? }
+     * Создаёт платёж ЮKassa и возвращает ссылку на оплату (для отправки клиенту).
+     * Пока поддержан только виджет «Распределение» (у «Дублей» свой шлюз).
+     */
+    public function billingLink(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    {
+        if (!$this->authorized($request)) {
+            return $this->jsonOut($response, ['error' => 'unauthorized'], 401);
+        }
+        $b       = $this->body($request);
+        $account = (string) ($b['account_id'] ?? '');
+        $widget  = (string) ($b['widget'] ?? BillingService::WIDGET);
+        $planId  = (int) ($b['plan_id'] ?? 0);
+        $users   = (int) ($b['users'] ?? 0);
+        $email   = (string) ($b['email'] ?? '');
+
+        if ($widget !== BillingService::WIDGET) {
+            return $this->jsonOut($response, ['error' => 'widget_not_supported', 'hint' => 'ссылки на оплату пока только для «Распределения»'], 400);
+        }
+
+        $svc = new BillingService($this->storage);
+        $res = $svc->createCheckout($account, $planId, $users, $email, 'admin');
+        $status = (int) ($res['status'] ?? 200);
+        unset($res['status']);
+        return $this->jsonOut($response, $res, $status);
+    }
+
     /* ----------------------------- helpers ------------------------------ */
 
     /** @return string[] уникальные account_id из всех подпапок storage */
@@ -446,6 +475,18 @@ td.mono{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted
 .enforce.on{border-color:var(--red);color:var(--red)}
 .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:13px;padding:10px 18px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
 .toast.show{opacity:1}
+/* billing link row */
+.linkrow{border-top:1px dashed var(--soft);padding-top:14px;margin-top:2px}
+.lk-form{margin-left:auto;flex-wrap:wrap}
+.lk-lbl{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:0.02em}
+.lk-sel,.lk-num,.lk-email{font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px 8px;border:1.5px solid var(--soft);border-radius:7px;color:var(--ink);background:#fff}
+.lk-num{width:64px}
+.lk-email{width:170px}
+.lk-out{flex-basis:100%;margin-top:6px;font-size:12px;word-break:break-all}
+.lk-url{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--ink)}
+.lk-copy{font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;padding:3px 9px;border:1.5px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);cursor:pointer}
+.lk-copy:hover{background:var(--ink);color:#fff}
+.lk-out.err-txt{color:var(--red)}
 </style></head>
 <body><div class="wrap">
 <div class="top">
@@ -501,9 +542,43 @@ function subRow(acc,wk,s){
     +(hist?('<span class="sub-hist">'+esc(hist)+'</span>'):'')
     +'</div>';
 }
+function linkRow(a){
+  var acc=a.account_id, u=(a.users_total||5);
+  return '<div class="sub linkrow">'
+    +'<span class="sub-name">Ссылка на оплату</span>'
+    +'<span class="ext lk-form">'
+      +'<select id="p_'+acc+'" class="lk-sel"><option value="6">6 мес</option><option value="12" selected>12 мес · 2 в подарок</option></select>'
+      +'<span class="lk-lbl">польз.</span><input type="number" id="u_'+acc+'" min="1" value="'+u+'" class="lk-num">'
+      +'<input type="email" id="e_'+acc+'" placeholder="email для чека" class="lk-email">'
+      +'<button class="primary" onclick="doLink(\''+acc+'\')">Создать ссылку</button>'
+    +'</span>'
+    +'<span class="lk-out" id="o_'+acc+'"></span>'
+  +'</div>';
+}
 function subsBlock(a){
   var s=a.subscriptions||{};
-  return '<div class="subs">'+subRow(a.account_id,'raspredelenie',s.raspredelenie)+subRow(a.account_id,'dubli',s.dubli)+'</div>';
+  return '<div class="subs">'
+    +subRow(a.account_id,'raspredelenie',s.raspredelenie)
+    +linkRow(a)
+    +subRow(a.account_id,'dubli',s.dubli)
+    +'</div>';
+}
+function doLink(acc){
+  var plan=+(document.getElementById('p_'+acc)||{}).value||12;
+  var users=+(document.getElementById('u_'+acc)||{}).value||0;
+  var email=(document.getElementById('e_'+acc)||{}).value||'';
+  var out=document.getElementById('o_'+acc); if(out){ out.textContent='создаю ссылку…'; out.className='lk-out'; }
+  post('/admin/api/billing-link',{account_id:acc,widget:'raspredelenie',plan_id:plan,users:users,email:email}).then(function(j){
+    if(!out) return;
+    out.innerHTML='';
+    var url=j.confirmation_url;
+    var a=document.createElement('a'); a.href=url; a.target='_blank'; a.rel='noopener'; a.textContent=url; a.className='lk-url';
+    var cp=document.createElement('button'); cp.type='button'; cp.className='lk-copy'; cp.textContent='копировать';
+    cp.onclick=function(){ navigator.clipboard.writeText(url).then(function(){cp.textContent='скопировано';setTimeout(function(){cp.textContent='копировать';},1500);}); };
+    var meta=document.createElement('span'); meta.className='muted'; meta.textContent=' · '+j.amount+' ₽ · '+j.months+' мес · '+j.users+' польз.';
+    out.appendChild(a); out.appendChild(document.createTextNode(' ')); out.appendChild(cp); out.appendChild(meta);
+    toast('Ссылка создана: '+j.amount+' ₽');
+  }).catch(function(e){ if(out){out.textContent='Ошибка: '+e.message; out.className='lk-out err-txt';} toast('Ошибка: '+e.message); });
 }
 function post(url,body){
   return fetch(url+'?key='+encodeURIComponent(KEY),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})

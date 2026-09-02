@@ -16,6 +16,7 @@ use DealDist\Http\Controller\StatusController;
 use DealDist\Http\Controller\TemplateController;
 use DealDist\Http\Controller\WebhookController;
 use DealDist\Http\Controller\AdminController;
+use DealDist\Http\Controller\BillingController;
 use DI\ContainerBuilder;
 use Monolog\Handler\StreamHandler;
 use Monolog\Level;
@@ -101,6 +102,12 @@ class AppFactory
         $app->get('/admin/api/overview', AdminController::class . ':overview');
         $app->post('/admin/api/extend', AdminController::class . ':extend');
         $app->post('/admin/api/set-until', AdminController::class . ':setUntil');
+        $app->post('/admin/api/billing-link', AdminController::class . ':billingLink');
+
+        // Billing (Ð Ð°ÑÐ¿ÑÐµÐ´ÐµÐ»ÐµÐ½Ð¸Ðµ) â Ð®Kassa
+        $app->post('/api/billing/quote', BillingController::class . ':quote');
+        $app->post('/api/billing/checkout', BillingController::class . ':checkout');
+        $app->post('/webhook/yookassa', BillingController::class . ':webhook');
 
         return $app;
     }
