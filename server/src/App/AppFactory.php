@@ -105,6 +105,7 @@ class AppFactory
         $app->post('/admin/api/billing-link', AdminController::class . ':billingLink');
 
         // Billing (Ð Ð°ÑÐ¿ÑÐµÐ´ÐµÐ»ÐµÐ½Ð¸Ðµ) â Ð®Kassa
+        $app->get('/api/billing/status', BillingController::class . ':status');
         $app->post('/api/billing/quote', BillingController::class . ':quote');
         $app->post('/api/billing/checkout', BillingController::class . ':checkout');
         $app->post('/webhook/yookassa', BillingController::class . ':webhook');

@@ -42,6 +42,22 @@ final class BillingController
         return $req->getQueryParams();
     }
 
+    /** GET /api/billing/status?users=N  — текущая подписка + прайс (одним запросом для панели виджета). */
+    public function status(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    {
+        $q       = $request->getQueryParams();
+        $account = (string) ($q['account_id'] ?? $request->getHeaderLine('X-Account-Id'));
+        $users   = (int) ($q['users'] ?? 0);
+        return $this->json($response, [
+            'ok'             => true,
+            'subscription'   => $this->svc->getStatus($account),
+            'plans'          => $this->svc->allQuotes($users),
+            'price_per_user' => $this->svc->pricePerUser(),
+            'min_users'      => $this->svc->minUsers(),
+            'fiscal'         => $this->svc->fiscalOn(),
+        ]);
+    }
+
     /** POST /api/billing/quote  { plan_id, users } */
     public function quote(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
     {

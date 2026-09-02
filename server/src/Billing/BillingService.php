@@ -75,6 +75,16 @@ final class BillingService
         ];
     }
 
+    /** Текущее состояние подписки аккаунта по виджету «Распределение». */
+    public function getStatus(string $account): array
+    {
+        $account = preg_replace('/[^0-9]/', '', $account);
+        if ($account === '') {
+            return ['status' => 'none', 'paid_until' => null, 'days_left' => null];
+        }
+        return (new SubscriptionStore($this->storage))->status($account, self::WIDGET);
+    }
+
     /** Расчёт по всем планам (для UI). @return array<int,array> */
     public function allQuotes(int $usersRaw): array
     {
