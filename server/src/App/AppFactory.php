@@ -16,6 +16,7 @@ use DealDist\Http\Controller\StatusController;
 use DealDist\Http\Controller\TemplateController;
 use DealDist\Http\Controller\WebhookController;
 use DealDist\Http\Controller\AdminController;
+use DealDist\Http\Controller\PrivacyController;
 use DealDist\Http\Controller\BillingController;
 use DI\ContainerBuilder;
 use Monolog\Handler\StreamHandler;
@@ -57,6 +58,9 @@ class AppFactory
         });
 
         // Health check (для reverse-proxy / мониторинга)
+        $app->get('/privacy', PrivacyController::class . ':ru');
+        $app->get('/privacy/en', PrivacyController::class . ':en');
+
         $app->get('/health', function ($request, $response) {
             $response->getBody()->write(json_encode([
                 'status'  => 'ok',
