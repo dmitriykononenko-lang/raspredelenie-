@@ -11,6 +11,7 @@ use DealDist\Http\Controller\DistributeController;
 use DealDist\Http\Controller\OAuthController;
 use DealDist\Http\Controller\QueueController;
 use DealDist\Http\Controller\ScheduleController;
+use DealDist\Http\Controller\MonthScheduleController;
 use DealDist\Http\Controller\SettingsController;
 use DealDist\Http\Controller\StatusController;
 use DealDist\Http\Controller\TemplateController;
@@ -75,6 +76,10 @@ class AppFactory
         $app->put('/api/settings',                      SettingsController::class   . ':save');
         $app->get('/api/amo/bootstrap',                 AmoDataController::class    . ':bootstrap');
         $app->get('/api/settings',                      SettingsController::class   . ':get');
+
+        // Месячный сменный график (v1.3.0)
+        $app->get('/api/schedule-month',                MonthScheduleController::class . ':get');
+        $app->put('/api/schedule-month',                MonthScheduleController::class . ':save');
 
         // Schedules
         $app->get('/api/schedules',                     ScheduleController::class   . ':listAll');

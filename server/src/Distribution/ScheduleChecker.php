@@ -48,6 +48,13 @@ class ScheduleChecker
      */
     public function isAvailableAt(string $accountId, int $userId, \DateTime $at): bool
     {
+        // v1.3.0: месячный сменный график имеет приоритет над недельным шаблоном.
+        // null — записи на дату нет → работает старая недельная логика ниже.
+        $monthResult = $this->monthAvailability($accountId, $userId, $at);
+        if ($monthResult !== null) {
+            return $monthResult;
+        }
+
         $schedule = $this->load($accountId, $userId);
         if ($schedule === null) {
             return true; // No schedule configured → always available
@@ -130,5 +137,43 @@ class ScheduleChecker
             return null;
         }
         return json_decode(file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * v1.3.0. Месячный график: "1"/"2"/"3" — смена (часы из shifts), "в"/"о"/"б"/"у" — не работает.
+     * @return bool|null null = в месячном графике нет записи на эту дату (fallback на недельный)
+     */
+    private function monthAvailability(string $accountId, int $userId, \DateTime $at): ?bool
+    {
+        try {
+            $month = new MonthScheduleStorage();
+            $cfg   = $month->getShifts($accountId);
+            $tz    = new \DateTimeZone($cfg['timezone'] ?: 'Europe/Moscow');
+            $now   = (clone $at)->setTimezone($tz);
+            $code  = $month->codeAt($accountId, $userId, $now);
+            if ($code === null) {
+                return null;
+            }
+            if (in_array($code, MonthScheduleStorage::OFF_CODES, true)) {
+                return false;
+            }
+            $sh = $cfg['shifts'][$code] ?? null;
+            if (!is_array($sh)) {
+                return false; // неизвестный код смены → не на смене
+            }
+            $s = \DateTime::createFromFormat('H:i', (string) ($sh['start'] ?? '00:00'), $tz);
+            $e = \DateTime::createFromFormat('H:i', (string) ($sh['end'] ?? '23:59'), $tz);
+            if (!$s || !$e) {
+                return false;
+            }
+            $s->setDate((int) $now->format('Y'), (int) $now->format('m'), (int) $now->format('d'));
+            $e->setDate((int) $now->format('Y'), (int) $now->format('m'), (int) $now->format('d'));
+            if ($e <= $s) {
+                $e->modify('+1 day'); // смена через полночь
+            }
+            return $now >= $s && $now <= $e;
+        } catch (\Throwable $t) {
+            return null;
+        }
     }
 }
