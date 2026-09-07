@@ -272,15 +272,36 @@ class ApiClient
 
     // Users / Pipelines (widget bootstrap /api/amo/bootstrap)
     /** @return array<int,array{id:int,name:string,group:string}> */
-    public function getUsers(string $accountId): array
+    /** Пользователи аккаунта. @param array<int,string> $groups id=>name (getUserGroups) */
+    public function getUsers(string $accountId, array $groups = []): array
     {
-        $out=[]; $page=1;
+        $out = []; $page = 1;
         do {
-            $data=$this->request($accountId,'GET','/users?limit=250&page='.$page);
-            $items=$data['_embedded']['users']??[];
-            foreach($items as $u){ $out[]=['id'=>(int)($u['id']??0),'name'=>(string)($u['name']??('#'.($u['id']??''))),'group'=>'']; }
-            $page++; $hasNext=isset($data['_links']['next']);
-        } while($hasNext && count($items)===250);
+            $data  = $this->request($accountId, 'GET', '/users?limit=250&page=' . $page);
+            $items = $data['_embedded']['users'] ?? [];
+            foreach ($items as $u) {
+                $gid = $u['rights']['group_id'] ?? null;
+                $out[] = [
+                    'id'        => (int) ($u['id'] ?? 0),
+                    'name'      => (string) ($u['name'] ?? ('#' . ($u['id'] ?? ''))),
+                    'group'     => ($gid !== null && isset($groups[(int) $gid])) ? (string) $groups[(int) $gid] : '',
+                    'group_key' => 'group_' . (int) ($gid ?? 0),
+                    'active'    => isset($u['rights']['is_active']) ? (bool) $u['rights']['is_active'] : true,
+                ];
+            }
+            $page++; $hasNext = isset($data['_links']['next']);
+        } while ($hasNext && count($items) === 250);
+        return $out;
+    }
+
+    /** Группы (отделы) пользователей. @return array<int,string> group_id => name */
+    public function getUserGroups(string $accountId): array
+    {
+        $data = $this->request($accountId, 'GET', '/account?with=users_groups');
+        $out  = [];
+        foreach (($data['_embedded']['users_groups'] ?? []) as $g) {
+            $out[(int) ($g['id'] ?? 0)] = (string) ($g['name'] ?? '');
+        }
         return $out;
     }
 
