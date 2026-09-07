@@ -27,8 +27,17 @@ class SettingsController
             return $this->json($response, ['error' => 'account_id required'], 400);
         }
 
-        $this->storage->save($accountId, $settings);
+        try {
 
+            $this->storage->save($accountId, $settings);
+
+        } catch (\InvalidArgumentException $e) {
+
+            // v1.3.0: guard в SettingsStorage — не даём затереть рабочее правило
+
+            return $this->json($response, ['error' => $e->getMessage()], 400);
+
+        }
         return $this->json($response, ['status' => 'ok']);
     }
 
