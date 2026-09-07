@@ -16,6 +16,7 @@ use DealDist\Http\Controller\StatusController;
 use DealDist\Http\Controller\TemplateController;
 use DealDist\Http\Controller\WebhookController;
 use DealDist\Http\Controller\AdminController;
+use DealDist\Http\Controller\AmoDataController;
 use DealDist\Http\Controller\PrivacyController;
 use DealDist\Http\Controller\BillingController;
 use DI\ContainerBuilder;
@@ -72,6 +73,7 @@ class AppFactory
         // Routes
         $app->post('/api/distribute',                   DistributeController::class . ':distribute');
         $app->put('/api/settings',                      SettingsController::class   . ':save');
+        $app->get('/api/amo/bootstrap',                 AmoDataController::class    . ':bootstrap');
         $app->get('/api/settings',                      SettingsController::class   . ':get');
 
         // Schedules

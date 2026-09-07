@@ -269,4 +269,33 @@ class ApiClient
         $this->logger->info('Open tasks reassigned', ['lead_id' => $leadId, 'count' => count($payload), 'user_id' => $newUserId]);
         return count($payload);
     }
+
+    // Users / Pipelines (widget bootstrap /api/amo/bootstrap)
+    /** @return array<int,array{id:int,name:string,group:string}> */
+    public function getUsers(string $accountId): array
+    {
+        $out=[]; $page=1;
+        do {
+            $data=$this->request($accountId,'GET','/users?limit=250&page='.$page);
+            $items=$data['_embedded']['users']??[];
+            foreach($items as $u){ $out[]=['id'=>(int)($u['id']??0),'name'=>(string)($u['name']??('#'.($u['id']??''))),'group'=>'']; }
+            $page++; $hasNext=isset($data['_links']['next']);
+        } while($hasNext && count($items)===250);
+        return $out;
+    }
+
+    /** @return array<int,array{id:int,name:string,statuses:array}> */
+    public function getPipelines(string $accountId): array
+    {
+        $data=$this->request($accountId,'GET','/leads/pipelines');
+        $out=[];
+        foreach(($data['_embedded']['pipelines']??[]) as $p){
+            $st=[];
+            foreach(($p['_embedded']['statuses']??[]) as $s){
+                $st[]=['id'=>(int)($s['id']??0),'name'=>(string)($s['name']??''),'type'=>(int)($s['type']??1)];
+            }
+            $out[]=['id'=>(int)($p['id']??0),'name'=>(string)($p['name']??''),'statuses'=>$st];
+        }
+        return $out;
+    }
 }
