@@ -53,8 +53,46 @@ class DistributionService
         $rules      = $payload['rules']               ?? [];
         $dpSettings = $payload['dp_settings']         ?? [];
 
-        $this->logger->info('Distribute called', compact('accountId', 'leadId', 'pipelineId', 'stageId', 'method'));
+        $force      = !empty($payload['force']);   // ручной запуск: без окна идемпотентности
 
+        $this->logger->info('Distribute called', compact('accountId', 'leadId', 'pipelineId', 'stageId', 'method', 'force'));
+
+        // ── 0. Защита от двойного распределения (P0) ───────────────────────────
+        // amoCRM повторяет вебхук, если ответ не пришёл быстро; повторы приходят
+        // параллельно и раньше крутили очередь по 5–7 раз на одну сделку.
+        $guard = new LeadGuard();
+        $lock  = $guard->acquire($accountId, $leadId, $force);
+        if ($lock === null) {
+            $this->logger->info('Lead is already being processed — skipping duplicate', compact('leadId'));
+            $this->log->record($accountId, $leadId, $pipelineId, $stageId, null, $method, 'skipped_duplicate');
+            return null;
+        }
+        if (!$force && $guard->recentlyAssigned($accountId, $leadId)) {
+            $guard->release($lock);
+            $this->logger->info('Lead was assigned recently — skipping duplicate', compact('leadId'));
+            $this->log->record($accountId, $leadId, $pipelineId, $stageId, null, $method, 'skipped_duplicate');
+            return null;
+        }
+
+        try {
+            return $this->doDistribute($guard, $payload, $accountId, $leadId, $pipelineId, $stageId, $method, $rules, $dpSettings);
+        } finally {
+            $guard->release($lock);
+        }
+    }
+
+    /** Основная логика; вызывается только под блокировкой сделки. */
+    private function doDistribute(
+        LeadGuard $guard,
+        array $payload,
+        string $accountId,
+        int $leadId,
+        ?int $pipelineId,
+        ?int $stageId,
+        string $method,
+        array $rules,
+        array $dpSettings,
+    ): ?array {
         // ── 1. Load full lead data (needed for filter evaluation) ─────────────
         $leadData = $this->apiClient->getLead($accountId, $leadId, ['tags', 'contacts', 'companies']);
 
@@ -90,6 +128,7 @@ class DistributionService
                 $this->apiClient->updateLeadResponsible($accountId, $leadId, $existingId);
                 try { $this->apiClient->reassignOpenTasks($accountId, $leadId, $existingId); } catch (\Throwable $t) {}
                 $this->log->record($accountId, $leadId, $pipelineId, $stageId, $existingId, $method, 'history_match');
+                $guard->markAssigned($accountId, $leadId);
                 return ['assigned_to_id' => $existingId, 'assigned_to_name' => (string) $existingId];
             }
         }
@@ -138,6 +177,7 @@ class DistributionService
 
         // ── 8. Log ────────────────────────────────────────────────────────────
         $this->log->record($accountId, $leadId, $pipelineId, $stageId, $chosenId, $method, 'assigned');
+        $guard->markAssigned($accountId, $leadId);
 
         $this->logger->info('Deal distributed', [
             'lead_id' => $leadId,

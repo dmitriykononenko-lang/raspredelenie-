@@ -41,6 +41,11 @@ class DistributeController
                 $this->logger,
             );
 
+            // Ручной запуск (кнопка в виджете / скрипт): игнорируем окно
+            // идемпотентности, но ждём, если сделка сейчас обрабатывается вебхуком.
+            if (!array_key_exists('force', $payload)) {
+                $payload['force'] = true;
+            }
             $result = $service->distribute($payload);
 
             if ($result === null) {

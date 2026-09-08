@@ -107,6 +107,21 @@ class WebhookController
         $settings = (new SettingsStorage())->load($accountId);
         $results  = [];
 
+        // ── Ранний ответ amoCRM (P0) ────────────────────────────────────────────
+        // amoCRM ждёт ответ ~2 сек и при задержке повторяет вебхук (параллельно).
+        // Цепочка GET lead → PATCH responsible занимает 2–3 сек, поэтому отдаём
+        // 200 сразу, а распределение выполняем уже после закрытия соединения.
+        $early = false;
+        if (function_exists('fastcgi_finish_request') && !headers_sent()) {
+            ignore_user_abort(true);
+            @set_time_limit(120);
+            http_response_code(200);
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'accepted', 'leads' => count($leads)], JSON_UNESCAPED_UNICODE);
+            fastcgi_finish_request();
+            $early = true;
+        }
+
         $service = new DistributionService(
             new ApiClient($this->logger),
             new QueueStorage(),
@@ -140,7 +155,7 @@ class WebhookController
             }
         }
 
-        $this->logger->info('Webhook processed', ['account_id' => $accountId, 'results' => $results]);
+        $this->logger->info('Webhook processed', ['account_id' => $accountId, 'early_ack' => $early, 'results' => $results]);
 
         return $this->json($response, ['status' => 'ok', 'results' => $results]);
     }

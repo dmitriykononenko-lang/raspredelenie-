@@ -63,6 +63,19 @@ class AppFactory
         $app->get('/privacy', PrivacyController::class . ':ru');
         $app->get('/privacy/en', PrivacyController::class . ':en');
 
+        // Раздача сборок виджета (zip) из STORAGE_PATH/dl/ — CORS даёт CorsMiddleware.
+        $app->get('/dl/{file:[A-Za-z0-9._-]+\\.zip}', function ($request, $response, array $args) {
+            $path = rtrim($_ENV['STORAGE_PATH'] ?? sys_get_temp_dir(), '/') . '/dl/' . $args['file'];
+            if (!is_file($path)) {
+                return $response->withStatus(404);
+            }
+            $response->getBody()->write((string) file_get_contents($path));
+            return $response
+                ->withHeader('Content-Type', 'application/zip')
+                ->withHeader('Content-Length', (string) filesize($path))
+                ->withHeader('Cache-Control', 'no-store');
+        });
+
         $app->get('/health', function ($request, $response) {
             $response->getBody()->write(json_encode([
                 'status'  => 'ok',
