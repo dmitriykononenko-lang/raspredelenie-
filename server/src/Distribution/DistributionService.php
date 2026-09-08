@@ -119,9 +119,10 @@ class DistributionService
 
         // ── 3. История клиента: тот же клиент → тот же менеджер ─────────────
         // Кандидаты — ответственные по прошлым сделкам контакта/компании (свежие
-        // первыми). Берём первого, кто (а) входит в менеджеров правила и
-        // (б) включён в распределении (online). График смен здесь не учитываем:
-        // сделка «своего» клиента должна остаться у своего менеджера.
+        // первыми). Берём первого, кто (а) входит в менеджеров правила,
+        // (б) включён в распределении (online) и (в) при включённом графике —
+        // сейчас на смене. «Свой» менеджер вне смены сделку не получает —
+        // она уходит по очереди тем, кто на смене (решение Дмитрия, 08.09).
         if (!empty($rule['check_history'])) {
             $candidates = [];
             try {
@@ -134,6 +135,10 @@ class DistributionService
                     continue;
                 }
                 if (!$this->statusStorage->isOnline($accountId, $existingId)) {
+                    continue;
+                }
+                if (!empty($rule['check_schedule']) && !$this->scheduleChecker->isAvailable($accountId, $existingId)) {
+                    $this->logger->info('History candidate is off shift — skipping', ['lead_id' => $leadId, 'user_id' => $existingId]);
                     continue;
                 }
                 $this->logger->info('History match — assigning to existing responsible', [
