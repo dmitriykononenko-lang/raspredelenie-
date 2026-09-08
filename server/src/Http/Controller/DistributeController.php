@@ -46,6 +46,13 @@ class DistributeController
             if (!array_key_exists('force', $payload)) {
                 $payload['force'] = true;
             }
+            // Правила/метод по умолчанию — из сохранённых настроек аккаунта
+            // (раньше без rules в теле запроса ручной запуск всегда давал skipped_no_rule).
+            if (empty($payload['rules'])) {
+                $settings = (new \DealDist\Config\SettingsStorage())->load((string) $accountId);
+                $payload['rules'] = $settings['rules'] ?? [];
+                $payload['distribution_method'] = $payload['distribution_method'] ?? ($settings['distribution_method'] ?? 'round_robin');
+            }
             $result = $service->distribute($payload);
 
             if ($result === null) {
