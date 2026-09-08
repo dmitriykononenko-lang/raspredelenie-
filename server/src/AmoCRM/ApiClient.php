@@ -191,7 +191,12 @@ class ApiClient
                     $otherLeadIds[] = (int) $l['id'];
                 }
             }
-            if (!empty($c['responsible_user_id'])) {
+            // Ответственный самого контакта — только если контакт «старый»
+            // (создан заметно раньше сделки). Контакт, созданный вместе со
+            // сделкой из чата/бота, получает ответственного по настройкам
+            // источника — это не история клиента (кейс 49363807: контакт и
+            // сделка созданы в одну минуту, responsible=Катя, других сделок нет).
+            if (!empty($c['responsible_user_id']) && $this->isOldEntity($c, $lead)) {
                 $entityFallback[] = (int) $c['responsible_user_id'];
             }
         }
@@ -206,7 +211,7 @@ class ApiClient
                     $otherLeadIds[] = (int) $l['id'];
                 }
             }
-            if (!empty($c['responsible_user_id'])) {
+            if (!empty($c['responsible_user_id']) && $this->isOldEntity($c, $lead)) {
                 $entityFallback[] = (int) $c['responsible_user_id'];
             }
         }
@@ -238,6 +243,14 @@ class ApiClient
             $candidates[] = $rid;
         }
         return array_values(array_unique($candidates));
+    }
+
+    /** Контакт/компания созданы минимум за час до сделки → это реальная история, а не артефакт создания. */
+    private function isOldEntity(array $entity, array $lead): bool
+    {
+        $ec = (int) ($entity['created_at'] ?? 0);
+        $lc = (int) ($lead['created_at'] ?? 0);
+        return $ec > 0 && $lc > 0 && ($lc - $ec) >= 3600;
     }
 
     /** @deprecated используйте getHistoryCandidates(); оставлено для совместимости */
