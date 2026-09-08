@@ -158,62 +158,95 @@ class ApiClient
      *
      * @param array|null $leadData  Already-loaded lead data (avoids an extra API call)
      */
+    /**
+     * История клиента: кому раньше отдавали сделки этого контакта/компании.
+     *
+     * Возвращает кандидатов (responsible_user_id) в порядке приоритета:
+     *   1) ответственные по ДРУГИМ сделкам контакта/компании — от самой свежей к старой
+     *      (по updated_at); 2) ответственный самого контакта/компании.
+     * Пустой массив — история не найдена.
+     *
+     * ВАЖНО: `/contacts/{id}?with=leads` отдаёт в _embedded только id сделок
+     * (без responsible_user_id), поэтому сделки дочитываем отдельным запросом
+     * `/leads?filter[id][]=…` (старый код брал responsible из embed и всегда
+     * получал 0 — история фактически не работала).
+     */
+    public function getHistoryCandidates(string $accountId, int $leadId, ?array $leadData = null, int $maxLeads = 50): array
+    {
+        $lead = $leadData ?? $this->getLead($accountId, $leadId, ['contacts', 'companies']);
+        $contactIds = array_map('intval', array_column($lead['_embedded']['contacts'] ?? [], 'id'));
+        $companyIds = array_map('intval', array_column($lead['_embedded']['companies'] ?? [], 'id'));
+
+        $otherLeadIds   = [];
+        $entityFallback = [];   // ответственные самих контактов/компаний
+
+        foreach ($contactIds as $cid) {
+            try {
+                $c = $this->request($accountId, 'GET', "/contacts/$cid?with=leads");
+            } catch (\Throwable $e) {
+                continue;
+            }
+            foreach ($c['_embedded']['leads'] ?? [] as $l) {
+                if ((int) ($l['id'] ?? 0) !== $leadId) {
+                    $otherLeadIds[] = (int) $l['id'];
+                }
+            }
+            if (!empty($c['responsible_user_id'])) {
+                $entityFallback[] = (int) $c['responsible_user_id'];
+            }
+        }
+        foreach ($companyIds as $coid) {
+            try {
+                $c = $this->request($accountId, 'GET', "/companies/$coid?with=leads");
+            } catch (\Throwable $e) {
+                continue;
+            }
+            foreach ($c['_embedded']['leads'] ?? [] as $l) {
+                if ((int) ($l['id'] ?? 0) !== $leadId) {
+                    $otherLeadIds[] = (int) $l['id'];
+                }
+            }
+            if (!empty($c['responsible_user_id'])) {
+                $entityFallback[] = (int) $c['responsible_user_id'];
+            }
+        }
+
+        $candidates = [];
+        $otherLeadIds = array_values(array_unique($otherLeadIds));
+        if ($otherLeadIds) {
+            $leads = [];
+            foreach (array_chunk(array_slice($otherLeadIds, 0, $maxLeads), 25) as $chunk) {
+                $q = implode('&', array_map(fn($id) => 'filter[id][]=' . $id, $chunk));
+                try {
+                    $d = $this->request($accountId, 'GET', "/leads?limit=250&$q");
+                } catch (\Throwable $e) {
+                    continue;
+                }
+                foreach ($d['_embedded']['leads'] ?? [] as $l) {
+                    $leads[] = $l;
+                }
+            }
+            usort($leads, fn($a, $b) => (int) ($b['updated_at'] ?? 0) <=> (int) ($a['updated_at'] ?? 0));
+            foreach ($leads as $l) {
+                $rid = (int) ($l['responsible_user_id'] ?? 0);
+                if ($rid > 0) {
+                    $candidates[] = $rid;
+                }
+            }
+        }
+        foreach ($entityFallback as $rid) {
+            $candidates[] = $rid;
+        }
+        return array_values(array_unique($candidates));
+    }
+
+    /** @deprecated используйте getHistoryCandidates(); оставлено для совместимости */
     public function getExistingResponsible(string $accountId, int $leadId, ?array $leadData = null): ?int
     {
-        // Reuse already-loaded lead data when available
-        $lead = $leadData ?? $this->getLead($accountId, $leadId, ['contacts', 'companies']);
-
-        $contactIds = array_column($lead['_embedded']['contacts'] ?? [], 'id');
-        $companyIds = array_column($lead['_embedded']['companies'] ?? [], 'id');
-
-        // Check contacts
-        foreach ($contactIds as $contactId) {
-            $userId = $this->getResponsibleFromContactLeads($accountId, (int) $contactId, $leadId);
-            if ($userId !== null) {
-                return $userId;
-            }
-        }
-
-        // Check companies
-        foreach ($companyIds as $companyId) {
-            $userId = $this->getResponsibleFromCompanyLeads($accountId, (int) $companyId, $leadId);
-            if ($userId !== null) {
-                return $userId;
-            }
-        }
-
-        return null;
+        $c = $this->getHistoryCandidates($accountId, $leadId, $leadData);
+        return $c[0] ?? null;
     }
 
-    private function getResponsibleFromContactLeads(string $accountId, int $contactId, int $excludeLeadId): ?int
-    {
-        $data = $this->request($accountId, 'GET', "/contacts/$contactId?with=leads");
-        foreach ($data['_embedded']['leads'] ?? [] as $lead) {
-            if ((int) $lead['id'] !== $excludeLeadId) {
-                return (int) $lead['responsible_user_id'];
-            }
-        }
-        return null;
-    }
-
-    private function getResponsibleFromCompanyLeads(string $accountId, int $companyId, int $excludeLeadId): ?int
-    {
-        $data = $this->request($accountId, 'GET', "/companies/$companyId?with=leads");
-        foreach ($data['_embedded']['leads'] ?? [] as $lead) {
-            if ((int) $lead['id'] !== $excludeLeadId) {
-                return (int) $lead['responsible_user_id'];
-            }
-        }
-        return null;
-    }
-
-    // ── Users ──────────────────────────────────────────────────────────────────
-
-    /**
-     * Returns open (active) leads count per user.
-     *
-     * @return array<int, int>  [userId => leadCount]
-     */
     public function getOpenLeadsCountByUser(string $accountId, array $userIds): array
     {
         $counts = array_fill_keys($userIds, 0);

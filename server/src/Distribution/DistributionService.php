@@ -117,19 +117,38 @@ class DistributionService
             return null;
         }
 
-        // ── 3. Check contact/company history ──────────────────────────────────
+        // ── 3. История клиента: тот же клиент → тот же менеджер ─────────────
+        // Кандидаты — ответственные по прошлым сделкам контакта/компании (свежие
+        // первыми). Берём первого, кто (а) входит в менеджеров правила и
+        // (б) включён в распределении (online). График смен здесь не учитываем:
+        // сделка «своего» клиента должна остаться у своего менеджера.
         if (!empty($rule['check_history'])) {
-            $existingId = $this->apiClient->getExistingResponsible($accountId, $leadId, $leadData);
-            if ($existingId !== null && in_array($existingId, $managerIds, true)) {
+            $candidates = [];
+            try {
+                $candidates = $this->apiClient->getHistoryCandidates($accountId, $leadId, $leadData);
+            } catch (\Throwable $e) {
+                $this->logger->warning('History lookup failed — falling back to queue', ['lead_id' => $leadId, 'error' => $e->getMessage()]);
+            }
+            foreach ($candidates as $existingId) {
+                if (!in_array($existingId, $managerIds, true)) {
+                    continue;
+                }
+                if (!$this->statusStorage->isOnline($accountId, $existingId)) {
+                    continue;
+                }
                 $this->logger->info('History match — assigning to existing responsible', [
-                    'lead_id' => $leadId,
-                    'user_id' => $existingId,
+                    'lead_id'    => $leadId,
+                    'user_id'    => $existingId,
+                    'candidates' => $candidates,
                 ]);
                 $this->apiClient->updateLeadResponsible($accountId, $leadId, $existingId);
                 try { $this->apiClient->reassignOpenTasks($accountId, $leadId, $existingId); } catch (\Throwable $t) {}
                 $this->log->record($accountId, $leadId, $pipelineId, $stageId, $existingId, $method, 'history_match');
                 $guard->markAssigned($accountId, $leadId);
                 return ['assigned_to_id' => $existingId, 'assigned_to_name' => (string) $existingId];
+            }
+            if ($candidates) {
+                $this->logger->info('History candidates found but none eligible — using queue', ['lead_id' => $leadId, 'candidates' => $candidates]);
             }
         }
 
