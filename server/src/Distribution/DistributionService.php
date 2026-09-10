@@ -168,6 +168,9 @@ class DistributionService
                 'lead_id'     => $leadId,
                 'manager_ids' => $managerIds,
             ]);
+            if ($this->enqueueWaiting($accountId, $leadId, $pipelineId, $stageId, $rule, $managerIds, $method, 'offline')) {
+                return null;
+            }
             $this->log->record($accountId, $leadId, $pipelineId, $stageId, null, $method, 'skipped_offline');
             return null;
         }
@@ -184,6 +187,9 @@ class DistributionService
                     'lead_id'     => $leadId,
                     'manager_ids' => $managerIds,
                 ]);
+                if ($this->enqueueWaiting($accountId, $leadId, $pipelineId, $stageId, $rule, $managerIds, $method, 'schedule')) {
+                    return null;
+                }
                 $this->log->record($accountId, $leadId, $pipelineId, $stageId, null, $method, 'skipped_schedule');
                 return null;
             }
@@ -231,6 +237,43 @@ class DistributionService
         }
 
         return ['assigned_to_id' => $chosenId, 'assigned_to_name' => (string) $chosenId];
+    }
+
+
+    /**
+     * Очередь ожидания (v1.4): заявка, которую сейчас некому отдать (все вне
+     * смены / все офлайн), не теряется, а ждёт — тик раздаст её, как только
+     * у правила появится менеджер на смене и online. Включается в правиле
+     * флагом queue_when_unavailable (по умолчанию выкл — поведение прежнее).
+     */
+    private function enqueueWaiting(string $accountId, int $leadId, ?int $pipelineId, ?int $stageId, array $rule, array $managerIds, string $method, string $why): bool
+    {
+        if (empty($rule['queue_when_unavailable'])) {
+            return false;
+        }
+        $pending = new PendingStorage();
+        $existing = $pending->all($accountId)[(string) $leadId] ?? null;
+        if ($existing && ($existing['type'] ?? '') === 'waiting') {
+            return true; // уже в очереди — порядок (queued_at) не сбиваем
+        }
+        $pending->put($accountId, [
+            'type'           => 'waiting',
+            'lead_id'        => $leadId,
+            'pipeline_id'    => $pipelineId,
+            'stage_id'       => $stageId,
+            'managers'       => $managerIds,
+            'method'         => $method,
+            'check_schedule' => !empty($rule['check_schedule']),
+            'check_history'  => !empty($rule['check_history']),
+            'not_before'     => (string) ($rule['queue_release_after'] ?? ''),   // "HH:MM" или ''
+            'max_wait_sec'   => (int) ($rule['queue_max_wait_hours'] ?? 36) * 3600,
+            'queued_at'      => time(),
+            'reason'         => $why,
+            'next_at'        => time() + 60,
+        ]);
+        $this->log->record($accountId, $leadId, $pipelineId, $stageId, null, $method, 'queued');
+        $this->logger->info('Lead queued (nobody available now)', ['lead_id' => $leadId, 'why' => $why]);
+        return true;
     }
 
     // ── Rule matching ─────────────────────────────────────────────────────────

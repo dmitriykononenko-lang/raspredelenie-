@@ -20,6 +20,9 @@ use DealDist\Distribution\PendingStorage;
 use DealDist\Distribution\StatusStorage;
 use DealDist\Distribution\ScheduleChecker;
 use DealDist\Distribution\DistributionLog;
+use DealDist\Distribution\DistributionService;
+use DealDist\Distribution\QueueStorage;
+use DealDist\Config\SettingsStorage;
 use Monolog\Logger;
 use Monolog\Handler\StreamHandler;
 
@@ -49,11 +52,87 @@ if (!$accounts) {
     exit(0);
 }
 
+// ── v1.4: ОЧЕРЕДЬ ОЖИДАНИЯ ──────────────────────────────────────────────────
+// Записи type=waiting — заявки, которым в момент прихода некого было отдать.
+// Раздаём в порядке queued_at, как только есть менеджер online и (при графике)
+// на смене; не раньше not_before (HH:MM, МСК-таймзона правила); сделку,
+// ушедшую с этапа, снимаем; просроченные (max_wait_sec) — снимаем с пометкой.
+// По одному аккаунту — не более RELEASE_PER_TICK сделок за проход (API amoCRM).
+const RELEASE_PER_TICK = 15;
+$service = new DistributionService($api, new QueueStorage(), $sched, $status, $log, $logger);
+$tz      = new DateTimeZone('Europe/Moscow');
+
 foreach ($accounts as $accountId) {
     $all     = $pending->all($accountId);
     $changed = false;
 
+    $waiting = array_filter($all, fn($e) => ($e['type'] ?? '') === 'waiting');
+    if ($waiting) {
+        uasort($waiting, fn($a, $b) => (int) ($a['queued_at'] ?? 0) <=> (int) ($b['queued_at'] ?? 0));
+        $released = 0;
+        $settings = (new SettingsStorage())->load($accountId);
+        foreach ($waiting as $key => $e) {
+            if ($released >= RELEASE_PER_TICK) { break; }
+            $leadId = (int) ($e['lead_id'] ?? 0);
+            if ($leadId <= 0) { unset($all[$key]); $changed = true; continue; }
+
+            // просрочка
+            if ($now - (int) ($e['queued_at'] ?? $now) > (int) ($e['max_wait_sec'] ?? 129600)) {
+                $log->record($accountId, $leadId, $e['pipeline_id'] ?? null, $e['stage_id'] ?? null, null, $e['method'] ?? 'round_robin', 'queue_expired');
+                $logger->info('Waiting: expired, dropping', ['lead_id' => $leadId]);
+                unset($all[$key]); $changed = true; continue;
+            }
+            // не раньше HH:MM
+            $nb = (string) ($e['not_before'] ?? '');
+            if ($nb !== '' && (new DateTime('now', $tz))->format('H:i') < $nb) { continue; }
+            // есть ли кому отдать
+            $anyone = false;
+            foreach (array_map('intval', $e['managers'] ?? []) as $mid) {
+                if (!$status->isOnline($accountId, $mid)) { continue; }
+                if (!empty($e['check_schedule']) && !$sched->isAvailable($accountId, $mid)) { continue; }
+                $anyone = true; break;
+            }
+            if (!$anyone) { continue; }
+            // сделка всё ещё на том же этапе?
+            try {
+                $lead = $api->getLead($accountId, $leadId);
+            } catch (\Throwable $ex) {
+                $logger->info('Waiting: lead fetch failed, dropping', ['lead_id' => $leadId, 'err' => $ex->getMessage()]);
+                unset($all[$key]); $changed = true; continue;
+            }
+            if (!empty($e['stage_id']) && (int) ($lead['status_id'] ?? 0) !== (int) $e['stage_id']) {
+                $log->record($accountId, $leadId, $e['pipeline_id'] ?? null, $e['stage_id'] ?? null, null, $e['method'] ?? 'round_robin', 'queue_dropped_moved');
+                unset($all[$key]); $changed = true; continue;
+            }
+            // раздаём через обычный сервис (история клиента, очередь, LeadGuard)
+            unset($all[$key]); $changed = true;            // снимаем ДО вызова — сервис может положить свою запись (redistribute)
+            $pending->saveAll($accountId, $all);
+            try {
+                $res = $service->distribute([
+                    'account_id'          => $accountId,
+                    'lead_id'             => $leadId,
+                    'pipeline_id'         => $e['pipeline_id'] ?? null,
+                    'stage_id'            => $e['stage_id'] ?? null,
+                    'distribution_method' => $settings['distribution_method'] ?? ($e['method'] ?? 'round_robin'),
+                    'rules'               => $settings['rules'] ?? [],
+                    'dp_settings'         => [],
+                    'event'               => 'queue',
+                    'force'               => true,
+                ]);
+                $logger->info('Waiting: released', ['lead_id' => $leadId, 'result' => $res]);
+                $released++;
+            } catch (\Throwable $ex) {
+                $logger->warning('Waiting: release failed', ['lead_id' => $leadId, 'err' => $ex->getMessage()]);
+            }
+            $all = $pending->all($accountId);   // перечитать — сервис мог изменить файл
+        }
+        if ($changed) { $pending->saveAll($accountId, $all); $changed = false; }
+    }
+
     foreach ($all as $key => $e) {
+        if (($e['type'] ?? '') === 'waiting') {
+            continue; // обработано выше
+        }
         if ((int) ($e['next_at'] ?? 0) > $now) {
             continue; // ещё не время
         }
