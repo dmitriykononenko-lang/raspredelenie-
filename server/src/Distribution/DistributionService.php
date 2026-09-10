@@ -67,7 +67,7 @@ class DistributionService
             $this->log->record($accountId, $leadId, $pipelineId, $stageId, null, $method, 'skipped_duplicate');
             return null;
         }
-        if (!$force && $guard->recentlyAssigned($accountId, $leadId)) {
+        if (!$force && $guard->recentlyAssigned($accountId, $leadId, $stageId)) {
             $guard->release($lock);
             $this->logger->info('Lead was assigned recently — skipping duplicate', compact('leadId'));
             $this->log->record($accountId, $leadId, $pipelineId, $stageId, null, $method, 'skipped_duplicate');
@@ -149,7 +149,7 @@ class DistributionService
                 $this->apiClient->updateLeadResponsible($accountId, $leadId, $existingId);
                 try { $this->apiClient->reassignOpenTasks($accountId, $leadId, $existingId); } catch (\Throwable $t) {}
                 $this->log->record($accountId, $leadId, $pipelineId, $stageId, $existingId, $method, 'history_match');
-                $guard->markAssigned($accountId, $leadId);
+                $guard->markAssigned($accountId, $leadId, $stageId);
                 return ['assigned_to_id' => $existingId, 'assigned_to_name' => (string) $existingId];
             }
             if ($candidates) {
@@ -207,7 +207,7 @@ class DistributionService
 
         // ── 8. Log ────────────────────────────────────────────────────────────
         $this->log->record($accountId, $leadId, $pipelineId, $stageId, $chosenId, $method, 'assigned');
-        $guard->markAssigned($accountId, $leadId);
+        $guard->markAssigned($accountId, $leadId, $stageId);
 
         $this->logger->info('Deal distributed', [
             'lead_id' => $leadId,

@@ -18,7 +18,7 @@ namespace DealDist\Distribution;
  */
 class LeadGuard
 {
-    public const RECENT_WINDOW = 600;      // 10 минут
+    public const RECENT_WINDOW = 120;      // 2 минуты: ретраи amoCRM укладываются в ~60 с; реальный повторный переход позже — не дубль
     private const RECENT_KEEP  = 86400;    // чистим записи старше суток
 
     private string $base;
@@ -56,14 +56,26 @@ class LeadGuard
         }
     }
 
-    public function recentlyAssigned(string $accountId, int $leadId, int $window = self::RECENT_WINDOW): bool
+    /** Дубль — только если недавно И на том же этапе (переход на другой этап — новое событие). */
+    public function recentlyAssigned(string $accountId, int $leadId, ?int $stageId = null, int $window = self::RECENT_WINDOW): bool
     {
         $map = $this->readRecent($accountId);
-        $ts  = $map[(string) $leadId] ?? null;
-        return $ts !== null && (time() - (int) $ts) < $window;
+        $v   = $map[(string) $leadId] ?? null;
+        if ($v === null) {
+            return false;
+        }
+        $ts    = is_array($v) ? (int) ($v['ts'] ?? 0) : (int) $v;
+        $stage = is_array($v) ? ($v['stage'] ?? null) : null;
+        if (time() - $ts >= $window) {
+            return false;
+        }
+        if ($stageId !== null && $stage !== null && (int) $stage !== (int) $stageId) {
+            return false;
+        }
+        return true;
     }
 
-    public function markAssigned(string $accountId, int $leadId): void
+    public function markAssigned(string $accountId, int $leadId, ?int $stageId = null): void
     {
         $file = $this->recentFile($accountId);
         $dir  = dirname($file);
@@ -78,12 +90,13 @@ class LeadGuard
         $raw = stream_get_contents($fh);
         $map = is_string($raw) && $raw !== '' ? (json_decode($raw, true) ?: []) : [];
         $now = time();
-        foreach ($map as $k => $ts) {
-            if ($now - (int) $ts > self::RECENT_KEEP) {
+        foreach ($map as $k => $v) {
+            $ts = is_array($v) ? (int) ($v['ts'] ?? 0) : (int) $v;
+            if ($now - $ts > self::RECENT_KEEP) {
                 unset($map[$k]);
             }
         }
-        $map[(string) $leadId] = $now;
+        $map[(string) $leadId] = ['ts' => $now, 'stage' => $stageId];
         ftruncate($fh, 0);
         rewind($fh);
         fwrite($fh, json_encode($map));
