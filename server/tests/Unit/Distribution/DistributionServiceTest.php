@@ -167,4 +167,20 @@ final class DistributionServiceTest extends TestCase
         self::assertContains('skipped_duplicate', $this->reasons());
         $g->release($h);
     }
+
+    public function test_assign_anyway_ignores_schedule(): void
+    {
+        $this->lead(151); $this->shiftToday('00:00', '00:01');
+        $r = $this->svc()->distribute($this->payload(151, $this->rule(['check_schedule' => true, 'offshift_mode' => 'assign_anyway'])));
+        self::assertSame(1, $r['assigned_to_id']);
+        self::assertContains('assigned', $this->reasons());
+    }
+
+    public function test_offshift_mode_skip_logs_skipped_schedule(): void
+    {
+        $this->lead(161); $this->shiftToday('00:00', '00:01');
+        self::assertNull($this->svc()->distribute($this->payload(161, $this->rule(['check_schedule' => true, 'offshift_mode' => 'skip']))));
+        self::assertContains('skipped_schedule', $this->reasons());
+        self::assertSame([], (new PendingStorage())->all($this->acc));
+    }
 }

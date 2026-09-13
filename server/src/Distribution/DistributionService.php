@@ -163,6 +163,12 @@ class DistributionService
             fn(int $id) => $this->statusStorage->isOnline($accountId, $id)
         ));
 
+        $offMode = (string) ($rule['offshift_mode'] ?? (!empty($rule['queue_when_unavailable']) ? 'queue' : 'skip'));
+        if (empty($availableManagers) && $offMode === 'assign_anyway') {
+            // «Распределить всё равно»: никто не включён — берём всех из правила
+            $availableManagers = $managerIds;
+            $this->logger->info('Off-shift: assign_anyway (all offline) — using full pool', ['lead_id' => $leadId]);
+        }
         if (empty($availableManagers)) {
             $this->logger->warning('All managers are offline — skipping', [
                 'lead_id'     => $leadId,
@@ -182,6 +188,18 @@ class DistributionService
                 fn(int $id) => $this->scheduleChecker->isAvailable($accountId, $id)
             ));
 
+            if (empty($availableManagers) && $offMode === 'assign_anyway') {
+                // «Распределить всё равно»: никто не на смене — среди включённых, график игнорируем;
+                // offshift_only_next_shift — только среди тех, у кого есть смена завтра
+                $pool = array_values(array_filter($managerIds, fn(int $id) => $this->statusStorage->isOnline($accountId, $id)));
+                if (!empty($rule['offshift_only_next_shift'])) {
+                    $tomorrow = new \DateTime('tomorrow 12:00', new \DateTimeZone('Europe/Moscow'));
+                    $next = array_values(array_filter($pool, fn(int $id) => $this->scheduleChecker->isAvailableAt($accountId, $id, $tomorrow)));
+                    if ($next) { $pool = $next; }
+                }
+                $availableManagers = $pool;
+                $this->logger->info('Off-shift: assign_anyway — ignoring schedule', ['lead_id' => $leadId, 'pool' => $pool]);
+            }
             if (empty($availableManagers)) {
                 $this->logger->warning('All managers are outside working hours — skipping', [
                     'lead_id'     => $leadId,

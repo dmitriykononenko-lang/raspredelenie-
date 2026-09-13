@@ -12,6 +12,7 @@ use DealDist\Http\Controller\OAuthController;
 use DealDist\Http\Controller\QueueController;
 use DealDist\Http\Controller\ScheduleController;
 use DealDist\Http\Controller\MonthScheduleController;
+use DealDist\Http\Controller\PendingController;
 use DealDist\Http\Controller\SettingsController;
 use DealDist\Http\Controller\StatusController;
 use DealDist\Http\Controller\TemplateController;
@@ -91,6 +92,8 @@ class AppFactory
         $app->get('/api/settings',                      SettingsController::class   . ':get');
 
         // Месячный сменный график (v1.3.0)
+        $app->get('/api/pending',                       PendingController::class . ':list');
+        $app->post('/api/pending/{leadId:[0-9]+}/release', PendingController::class . ':release');
         $app->get('/api/schedule-month',                MonthScheduleController::class . ':get');
         $app->put('/api/schedule-month',                MonthScheduleController::class . ':save');
 
