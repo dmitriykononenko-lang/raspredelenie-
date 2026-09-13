@@ -1,456 +1,170 @@
 <?php
-
 declare(strict_types=1);
-
 namespace DealDist\Tests\Unit\Distribution;
 
-use DealDist\AmoCRM\ApiClient;
-use DealDist\Distribution\DistributionLog;
-use DealDist\Distribution\DistributionService;
-use DealDist\Distribution\QueueStorage;
-use DealDist\Distribution\ScheduleChecker;
-use DealDist\Distribution\StatusStorage;
-use Monolog\Handler\NullHandler;
+use DealDist\Distribution\{DistributionService, DistributionLog, PendingStorage, QueueStorage, ScheduleChecker, StatusStorage, LeadGuard, MonthScheduleStorage};
+use DealDist\Tests\Support\FakeApiClient;
 use Monolog\Logger;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 /**
- * @covers \DealDist\Distribution\DistributionService
+ * Сценарии Given → When → Then для ядра распределения. Все хранилища — во временном
+ * STORAGE_PATH, сеть заменена FakeApiClient. Время смен проверяется через месячный график
+ * с искусственными часами вокруг «сейчас».
  */
-class DistributionServiceTest extends TestCase
+final class DistributionServiceTest extends TestCase
 {
-    private ApiClient&MockObject       $apiClient;
-    private QueueStorage&MockObject    $queueStorage;
-    private ScheduleChecker&MockObject $scheduleChecker;
-    private StatusStorage&MockObject   $statusStorage;
-    private DistributionLog&MockObject $log;
-    private DistributionService        $service;
+    private string $acc = '100';
+    private string $dir;
+    private FakeApiClient $api;
+    private StatusStorage $status;
 
     protected function setUp(): void
     {
-        $this->apiClient       = $this->createMock(ApiClient::class);
-        $this->queueStorage    = $this->createMock(QueueStorage::class);
-        $this->scheduleChecker = $this->createMock(ScheduleChecker::class);
-        $this->statusStorage   = $this->createMock(StatusStorage::class);
-        $this->log             = $this->createMock(DistributionLog::class);
-
-        // По умолчанию все менеджеры онлайн (opt-out).
-        $this->statusStorage->method('isOnline')->willReturn(true);
-
-        $logger = new Logger('test');
-        $logger->pushHandler(new NullHandler());
-
-        $this->service = new DistributionService(
-            $this->apiClient,
-            $this->queueStorage,
-            $this->scheduleChecker,
-            $this->statusStorage,
-            $this->log,
-            $logger,
-        );
+        $this->dir = sys_get_temp_dir() . '/dd-test-' . bin2hex(random_bytes(4));
+        mkdir($this->dir, 0777, true);
+        $_ENV['STORAGE_PATH'] = $this->dir;
+        $this->api = new FakeApiClient();
+        $this->status = new StatusStorage();
+        foreach ([1, 2, 3] as $u) $this->status->set($this->acc, $u, true, 0);
     }
+    protected function tearDown(): void { exec('rm -rf ' . escapeshellarg($this->dir)); }
 
-    // ── No matching rule ──────────────────────────────────────────────────────
-
-    public function testReturnsNullWhenNoRuleMatches(): void
+    private function svc(): DistributionService
     {
-        $this->apiClient->method('getLead')->willReturn($this->leadData());
-
-        $this->log->expects($this->once())
-            ->method('record')
-            ->with('acc1', 100, self::anything(), self::anything(), null, 'round_robin', 'skipped_no_rule');
-
-        $result = $this->service->distribute($this->payload(rules: []));
-
-        $this->assertNull($result);
+        return new DistributionService($this->api, new QueueStorage(), new ScheduleChecker(), $this->status, new DistributionLog(), new Logger('t'));
     }
-
-    public function testReturnsNullWhenRulePipelineDoesNotMatch(): void
+    private function lead(int $id, int $stage = 500, int $resp = 0): void
+    { $this->api->leads[$id] = ['id' => $id, 'pipeline_id' => 10, 'status_id' => $stage, 'responsible_user_id' => $resp, 'created_at' => time() - 60, '_embedded' => ['contacts' => [], 'companies' => []]]; }
+    private function rule(array $extra = []): array
+    { return array_merge(['pipeline_id' => null, 'stage_id' => null, 'check_history' => false, 'check_schedule' => false, 'redistribute_after' => 0, 'managers' => [['id' => 1], ['id' => 2], ['id' => 3]], 'filters' => []], $extra); }
+    private function payload(int $lead, array $rule, array $x = []): array
+    { return array_merge(['account_id' => $this->acc, 'lead_id' => $lead, 'pipeline_id' => 10, 'stage_id' => 500, 'distribution_method' => 'round_robin', 'rules' => [$rule], 'dp_settings' => []], $x); }
+    private function reasons(): array
+    { return array_column((new DistributionLog())->tail($this->acc, 100), 'reason'); }
+    /** Месячный график: у всех менеджеров сегодня смена "1" с часами [$from,$to] МСК. */
+    private function shiftToday(string $from, string $to, array $users = [1, 2, 3], array $dayOff = []): void
     {
-        $this->apiClient->method('getLead')->willReturn($this->leadData(pipelineId: 999));
-
-        $result = $this->service->distribute($this->payload(
-            pipelineId: 999,
-            rules: [$this->rule(pipelineId: 111)]
-        ));
-
-        $this->assertNull($result);
+        $ms = new MonthScheduleStorage(); $now = new \DateTime('now', new \DateTimeZone('Europe/Moscow'));
+        $grid = []; foreach ($users as $u) $grid[(string) $u] = [$now->format('j') => '1'];
+        foreach ($dayOff as $u) $grid[(string) $u] = [$now->format('j') => 'в'];
+        $ms->saveShifts($this->acc, ['1' => ['start' => $from, 'end' => $to]], 'Europe/Moscow');
+        $ms->saveMonth($this->acc, $now->format('Y-m'), $grid);
     }
 
-    public function testReturnsNullWhenRuleStageDoesNotMatch(): void
+    public function test_round_robin_cycles_through_managers(): void
     {
-        $this->apiClient->method('getLead')->willReturn($this->leadData(stageId: 888));
-
-        $result = $this->service->distribute($this->payload(
-            stageId: 888,
-            rules: [$this->rule(stageId: 222)]
-        ));
-
-        $this->assertNull($result);
+        foreach ([11, 12, 13, 14] as $l) $this->lead($l);
+        $got = [];
+        foreach ([11, 12, 13, 14] as $l) $got[] = $this->svc()->distribute($this->payload($l, $this->rule()))['assigned_to_id'];
+        self::assertSame([1, 2, 3, 1], $got);
     }
 
-    // ── Round-robin distribution ──────────────────────────────────────────────
-
-    public function testRoundRobinAssignsManager(): void
+    public function test_duplicate_webhook_within_window_is_skipped_and_queue_not_advanced(): void
     {
-        $this->apiClient->method('getLead')->willReturn($this->leadData());
-
-        $this->queueStorage
-            ->expects($this->once())
-            ->method('getNextManager')
-            ->willReturn(201);
-
-        $this->apiClient
-            ->expects($this->once())
-            ->method('updateLeadResponsible')
-            ->with('acc1', 100, 201);
-
-        $this->log->expects($this->once())
-            ->method('record')
-            ->with('acc1', 100, self::anything(), self::anything(), 201, 'round_robin', 'assigned');
-
-        $result = $this->service->distribute($this->payload(
-            rules: [$this->rule(managers: [201, 202, 203])]
-        ));
-
-        $this->assertSame(201, $result['assigned_to_id']);
+        $this->lead(21); $this->lead(22);
+        $first = $this->svc()->distribute($this->payload(21, $this->rule()));
+        $dup   = $this->svc()->distribute($this->payload(21, $this->rule()));
+        $next  = $this->svc()->distribute($this->payload(22, $this->rule()));
+        self::assertSame(1, $first['assigned_to_id']);
+        self::assertNull($dup);
+        self::assertSame(2, $next['assigned_to_id'], 'дубль не должен сдвигать очередь');
+        self::assertContains('skipped_duplicate', $this->reasons());
     }
 
-    // ── Workload distribution ─────────────────────────────────────────────────
-
-    public function testWorkloadPicksManagerWithFewestLeads(): void
+    public function test_same_lead_on_new_stage_is_not_a_duplicate(): void
     {
-        $this->apiClient->method('getLead')->willReturn($this->leadData());
-
-        $this->apiClient
-            ->method('getOpenLeadsCountByUser')
-            ->willReturn([201 => 10, 202 => 3, 203 => 7]);
-
-        $this->apiClient
-            ->expects($this->once())
-            ->method('updateLeadResponsible')
-            ->with('acc1', 100, 202); // fewest leads
-
-        $result = $this->service->distribute($this->payload(
-            method: 'workload',
-            rules:  [$this->rule(managers: [201, 202, 203])]
-        ));
-
-        $this->assertSame(202, $result['assigned_to_id']);
+        $this->lead(31);
+        $a = $this->svc()->distribute($this->payload(31, $this->rule(), ['stage_id' => 500]));
+        $b = $this->svc()->distribute($this->payload(31, $this->rule(), ['stage_id' => 600]));
+        self::assertNotNull($a); self::assertNotNull($b);
     }
 
-    // ── History check ─────────────────────────────────────────────────────────
-
-    public function testHistoryMatchAssignsExistingResponsible(): void
+    public function test_force_bypasses_duplicate_window(): void
     {
-        $this->apiClient->method('getLead')->willReturn($this->leadData());
-
-        $this->apiClient
-            ->method('getExistingResponsible')
-            ->willReturn(202); // existing responsible
-
-        $this->apiClient
-            ->expects($this->once())
-            ->method('updateLeadResponsible')
-            ->with('acc1', 100, 202);
-
-        $this->log->expects($this->once())
-            ->method('record')
-            ->with('acc1', 100, self::anything(), self::anything(), 202, 'round_robin', 'history_match');
-
-        $result = $this->service->distribute($this->payload(
-            rules: [$this->rule(managers: [201, 202, 203], checkHistory: true)]
-        ));
-
-        $this->assertSame(202, $result['assigned_to_id']);
+        $this->lead(41);
+        $this->svc()->distribute($this->payload(41, $this->rule()));
+        self::assertNotNull($this->svc()->distribute($this->payload(41, $this->rule(), ['force' => true])));
     }
 
-    public function testHistoryCheckSkipsIfExistingManagerNotInList(): void
+    public function test_offline_managers_are_skipped(): void
     {
-        $this->apiClient->method('getLead')->willReturn($this->leadData());
-
-        $this->apiClient
-            ->method('getExistingResponsible')
-            ->willReturn(999); // not in managers list
-
-        $this->queueStorage->method('getNextManager')->willReturn(201);
-
-        $this->apiClient
-            ->expects($this->once())
-            ->method('updateLeadResponsible')
-            ->with('acc1', 100, 201);
-
-        $result = $this->service->distribute($this->payload(
-            rules: [$this->rule(managers: [201, 202], checkHistory: true)]
-        ));
-
-        $this->assertSame(201, $result['assigned_to_id']);
+        $this->lead(51); $this->status->set($this->acc, 1, false, 0);
+        self::assertSame(2, $this->svc()->distribute($this->payload(51, $this->rule()))['assigned_to_id']);
     }
 
-    public function testHistoryCheckSkipsIfNoExistingResponsible(): void
+    public function test_all_offline_without_queue_is_skipped_offline(): void
     {
-        $this->apiClient->method('getLead')->willReturn($this->leadData());
-
-        $this->apiClient
-            ->method('getExistingResponsible')
-            ->willReturn(null);
-
-        $this->queueStorage->method('getNextManager')->willReturn(201);
-
-        $result = $this->service->distribute($this->payload(
-            rules: [$this->rule(managers: [201, 202], checkHistory: true)]
-        ));
-
-        $this->assertSame(201, $result['assigned_to_id']);
+        $this->lead(61); foreach ([1, 2, 3] as $u) $this->status->set($this->acc, $u, false, 0);
+        self::assertNull($this->svc()->distribute($this->payload(61, $this->rule())));
+        self::assertContains('skipped_offline', $this->reasons());
+        self::assertSame([], (new PendingStorage())->all($this->acc));
     }
 
-    // ── Schedule check ────────────────────────────────────────────────────────
-
-    public function testScheduleFilterExcludesUnavailableManagers(): void
+    public function test_history_prefers_previous_manager_when_online_and_on_shift(): void
     {
-        $this->apiClient->method('getLead')->willReturn($this->leadData());
-
-        // 201 is off duty, 202 is available
-        $this->scheduleChecker
-            ->method('isAvailable')
-            ->willReturnMap([
-                ['acc1', 201, false],
-                ['acc1', 202, true],
-            ]);
-
-        $this->queueStorage
-            ->expects($this->once())
-            ->method('getNextManager')
-            ->with('acc1', self::anything(), [202]) // 201 filtered out
-            ->willReturn(202);
-
-        $result = $this->service->distribute($this->payload(
-            rules: [$this->rule(managers: [201, 202], checkSchedule: true)]
-        ));
-
-        $this->assertSame(202, $result['assigned_to_id']);
+        $this->lead(71); $this->api->history[71] = [3];
+        self::assertSame(3, $this->svc()->distribute($this->payload(71, $this->rule(['check_history' => true])))['assigned_to_id']);
+        self::assertContains('history_match', $this->reasons());
     }
 
-    public function testReturnsNullWhenAllManagersAreOffDuty(): void
+    public function test_history_candidate_offline_falls_back_to_queue(): void
     {
-        $this->apiClient->method('getLead')->willReturn($this->leadData());
-
-        $this->scheduleChecker
-            ->method('isAvailable')
-            ->willReturn(false);
-
-        $this->log->expects($this->once())
-            ->method('record')
-            ->with('acc1', 100, self::anything(), self::anything(), null, 'round_robin', 'skipped_schedule');
-
-        $result = $this->service->distribute($this->payload(
-            rules: [$this->rule(managers: [201, 202], checkSchedule: true)]
-        ));
-
-        $this->assertNull($result);
+        $this->lead(81); $this->api->history[81] = [3]; $this->status->set($this->acc, 3, false, 0);
+        self::assertSame(1, $this->svc()->distribute($this->payload(81, $this->rule(['check_history' => true])))['assigned_to_id']);
     }
 
-    // ── Online status ─────────────────────────────────────────────────────────
-
-    public function testOfflineManagerExcluded(): void
+    public function test_history_candidate_off_shift_falls_back_to_queue(): void
     {
-        $this->apiClient->method('getLead')->willReturn($this->leadData());
-
-        // 201 офлайн, 202 онлайн
-        $this->statusStorage = $this->createMock(StatusStorage::class);
-        $this->statusStorage->method('isOnline')->willReturnMap([
-            ['acc1', 201, false],
-            ['acc1', 202, true],
-        ]);
-        $this->rebuildService();
-
-        $this->queueStorage
-            ->expects($this->once())
-            ->method('getNextManager')
-            ->with('acc1', self::anything(), [202]) // 201 исключён как офлайн
-            ->willReturn(202);
-
-        $result = $this->service->distribute($this->payload(
-            rules: [$this->rule(managers: [201, 202])]
-        ));
-
-        $this->assertSame(202, $result['assigned_to_id']);
+        $this->lead(91); $this->api->history[91] = [3];
+        $this->shiftToday('00:00', '23:59', [1, 2], [3]);            // 3 — выходной по графику
+        $r = $this->svc()->distribute($this->payload(91, $this->rule(['check_history' => true, 'check_schedule' => true])));
+        self::assertSame(1, $r['assigned_to_id']);
     }
 
-    public function testReturnsNullWhenAllManagersOffline(): void
+    public function test_out_of_shift_with_queue_enabled_is_queued_not_assigned(): void
     {
-        $this->apiClient->method('getLead')->willReturn($this->leadData());
-
-        $this->statusStorage = $this->createMock(StatusStorage::class);
-        $this->statusStorage->method('isOnline')->willReturn(false);
-        $this->rebuildService();
-
-        $this->log->expects($this->once())
-            ->method('record')
-            ->with('acc1', 100, self::anything(), self::anything(), null, 'round_robin', 'skipped_offline');
-
-        $result = $this->service->distribute($this->payload(
-            rules: [$this->rule(managers: [201, 202])]
-        ));
-
-        $this->assertNull($result);
+        $this->lead(101);
+        $this->shiftToday('00:00', '00:01');                           // смена уже закончилась
+        $rule = $this->rule(['check_schedule' => true, 'queue_when_unavailable' => true]);
+        self::assertNull($this->svc()->distribute($this->payload(101, $rule)));
+        self::assertContains('queued', $this->reasons());
+        $p = (new PendingStorage())->all($this->acc);
+        self::assertSame('waiting', $p['101']['type']);
+        self::assertSame([], $this->api->updates, 'ответственный не должен меняться при постановке в очередь');
     }
 
-    // ── Deal filters ──────────────────────────────────────────────────────────
-
-    public function testDealFilterSkipsRuleWhenLeadDoesNotMatch(): void
+    public function test_queued_lead_is_not_requeued_and_keeps_order(): void
     {
-        // Lead price 5000 does not satisfy budget_min: 10000
-        $this->apiClient->method('getLead')->willReturn($this->leadData(price: 5_000));
-
-        $result = $this->service->distribute($this->payload(
-            rules: [$this->rule(filters: ['budget_min' => 10_000])]
-        ));
-
-        $this->assertNull($result);
+        $this->lead(111); $this->shiftToday('00:00', '00:01');
+        $rule = $this->rule(['check_schedule' => true, 'queue_when_unavailable' => true]);
+        $this->svc()->distribute($this->payload(111, $rule));
+        $t1 = (new PendingStorage())->all($this->acc)['111']['queued_at'];
+        sleep(1);
+        $this->svc()->distribute($this->payload(111, $rule, ['force' => true]));
+        self::assertSame($t1, (new PendingStorage())->all($this->acc)['111']['queued_at']);
     }
 
-    public function testDealFilterPassesAndAssigns(): void
+    public function test_no_matching_rule_logs_skipped_no_rule(): void
     {
-        $this->apiClient->method('getLead')->willReturn($this->leadData(price: 50_000));
-        $this->queueStorage->method('getNextManager')->willReturn(201);
-
-        $result = $this->service->distribute($this->payload(
-            rules: [$this->rule(filters: ['budget_min' => 10_000, 'budget_max' => 100_000])]
-        ));
-
-        $this->assertSame(201, $result['assigned_to_id']);
+        $this->lead(121);
+        self::assertNull($this->svc()->distribute($this->payload(121, $this->rule(['pipeline_id' => 999]))));
+        self::assertContains('skipped_no_rule', $this->reasons());
     }
 
-    // ── Pipeline/stage wildcard ───────────────────────────────────────────────
-
-    public function testRuleWithNoPipelineMatchesAnyPipeline(): void
+    public function test_workload_picks_least_loaded(): void
     {
-        $this->apiClient->method('getLead')->willReturn($this->leadData(pipelineId: 555));
-        $this->queueStorage->method('getNextManager')->willReturn(201);
-
-        $result = $this->service->distribute($this->payload(
-            pipelineId: 555,
-            rules: [$this->rule(pipelineId: null)] // null = any pipeline
-        ));
-
-        $this->assertSame(201, $result['assigned_to_id']);
+        $this->lead(131); $this->api->workload = [1 => 5, 2 => 1, 3 => 3];
+        self::assertSame(2, $this->svc()->distribute($this->payload(131, $this->rule(), ['distribution_method' => 'workload']))['assigned_to_id']);
     }
 
-    public function testRuleWithNoStageMatchesAnyStage(): void
+    public function test_lead_guard_lock_blocks_parallel_processing(): void
     {
-        $this->apiClient->method('getLead')->willReturn($this->leadData(stageId: 777));
-        $this->queueStorage->method('getNextManager')->willReturn(201);
-
-        $result = $this->service->distribute($this->payload(
-            stageId: 777,
-            rules: [$this->rule(stageId: null)] // null = any stage
-        ));
-
-        $this->assertSame(201, $result['assigned_to_id']);
-    }
-
-    // ── Digital Pipeline settings take priority ───────────────────────────────
-
-    public function testDpSettingsOverrideRules(): void
-    {
-        $this->apiClient->method('getLead')->willReturn($this->leadData());
-        $this->queueStorage->method('getNextManager')->willReturn(301);
-
-        $result = $this->service->distribute($this->payload(
-            rules:      [$this->rule(managers: [201])],
-            dpSettings: ['managers' => [['id' => 301], ['id' => 302]]]
-        ));
-
-        $this->assertSame(301, $result['assigned_to_id']);
-    }
-
-    // ── Empty managers list ───────────────────────────────────────────────────
-
-    public function testReturnsNullWhenManagersListEmpty(): void
-    {
-        $this->apiClient->method('getLead')->willReturn($this->leadData());
-
-        $this->log->expects($this->once())
-            ->method('record')
-            ->with('acc1', 100, self::anything(), self::anything(), null, 'round_robin', 'skipped_no_managers');
-
-        $result = $this->service->distribute($this->payload(
-            rules: [$this->rule(managers: [])]
-        ));
-
-        $this->assertNull($result);
-    }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private function rebuildService(): void
-    {
-        $logger = new Logger('test');
-        $logger->pushHandler(new NullHandler());
-
-        $this->service = new DistributionService(
-            $this->apiClient,
-            $this->queueStorage,
-            $this->scheduleChecker,
-            $this->statusStorage,
-            $this->log,
-            $logger,
-        );
-    }
-
-    private function payload(
-        string  $accountId  = 'acc1',
-        int     $leadId     = 100,
-        ?int    $pipelineId = 111,
-        ?int    $stageId    = 222,
-        string  $method     = 'round_robin',
-        array   $rules      = [],
-        array   $dpSettings = [],
-    ): array {
-        return [
-            'account_id'          => $accountId,
-            'lead_id'             => $leadId,
-            'pipeline_id'         => $pipelineId,
-            'stage_id'            => $stageId,
-            'distribution_method' => $method,
-            'rules'               => $rules,
-            'dp_settings'         => $dpSettings,
-        ];
-    }
-
-    private function rule(
-        ?int   $pipelineId    = 111,
-        ?int   $stageId       = 222,
-        array  $managers      = [201, 202],
-        bool   $checkHistory  = false,
-        bool   $checkSchedule = false,
-        array  $filters       = [],
-    ): array {
-        return [
-            'pipeline_id'    => $pipelineId,
-            'stage_id'       => $stageId,
-            'managers'       => array_map(fn(int $id): array => ['id' => $id], $managers),
-            'check_history'  => $checkHistory,
-            'check_schedule' => $checkSchedule,
-            'filters'        => $filters,
-        ];
-    }
-
-    private function leadData(
-        int  $pipelineId = 111,
-        int  $stageId    = 222,
-        int  $price      = 0,
-    ): array {
-        return [
-            'id'          => 100,
-            'name'        => 'Test Lead',
-            'price'       => $price,
-            'pipeline_id' => $pipelineId,
-            'status_id'   => $stageId,
-            '_embedded'   => ['tags' => [], 'contacts' => [], 'companies' => []],
-            'custom_fields_values' => [],
-        ];
+        $g = new LeadGuard(); $h = $g->acquire($this->acc, 141, false);
+        self::assertNotNull($h);
+        $this->lead(141);
+        self::assertNull($this->svc()->distribute($this->payload(141, $this->rule())));
+        self::assertContains('skipped_duplicate', $this->reasons());
+        $g->release($h);
     }
 }
