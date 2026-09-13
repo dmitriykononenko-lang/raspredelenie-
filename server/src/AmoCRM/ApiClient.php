@@ -21,11 +21,16 @@ class ApiClient
     private Client $http;
     private string $storagePath;
 
+    /** P0-1: повторы при 429 / 5xx / сетевых ошибках (amoCRM: 7 rps на аккаунт). */
+    private const RETRY_MAX     = 3;
+    private const RETRY_BASE_MS = 500;
+
     public function __construct(
         private readonly Logger $logger,
+        ?Client $http = null,
     ) {
         $this->storagePath = rtrim($_ENV['STORAGE_PATH'] ?? sys_get_temp_dir(), '/');
-        $this->http        = new Client(['timeout' => 15, 'connect_timeout' => 5]);
+        $this->http        = $http ?? new Client(['timeout' => 15, 'connect_timeout' => 5]);
     }
 
     // ── Token management ─────────────────────────────────────────────────────
@@ -99,24 +104,50 @@ class ApiClient
         $url = 'https://' . $tokens['base_domain'] . '/api/' . self::API_VERSION . $path;
         $options['headers']['Authorization'] = 'Bearer ' . $tokens['access_token'];
 
-        try {
-            $response = $this->http->request($method, $url, $options);
-        } catch (\GuzzleHttp\Exception\ClientException $e) {
-            if ($e->getResponse()->getStatusCode() === 401) {
-                // Долгосрочный токен обновить нельзя — даём понятную ошибку (§6.4).
-                if (!empty($tokens['long_term'])) {
-                    $this->logger->error('Долгосрочный токен отклонён (401)', [
-                        'account_id' => $accountId,
-                        'hint'       => 'Проверьте AMO_LONG_TERM_TOKEN / AMO_ACCOUNT_ID в .env',
-                    ]);
-                    throw new \RuntimeException('amoCRM 401: долгосрочный токен недействителен или не для этого аккаунта');
-                }
-                // OAuth-токен истёк — обновляем и повторяем один раз
-                $tokens = $this->refreshTokens($accountId, $tokens);
-                $options['headers']['Authorization'] = 'Bearer ' . $tokens['access_token'];
+        $refreshed = false;
+        for ($attempt = 1; ; $attempt++) {
+            try {
                 $response = $this->http->request($method, $url, $options);
-            } else {
-                throw $e;
+                break;
+            } catch (\GuzzleHttp\Exception\RequestException $e) {
+                $resp   = $e->getResponse();
+                $status = $resp ? $resp->getStatusCode() : 0;   // 0 = сеть/таймаут
+
+                if ($status === 401 && !$refreshed) {
+                    // Долгосрочный токен обновить нельзя — даём понятную ошибку (§6.4).
+                    if (!empty($tokens['long_term'])) {
+                        $this->logger->error('Долгосрочный токен отклонён (401)', [
+                            'account_id' => $accountId,
+                            'hint'       => 'Проверьте AMO_LONG_TERM_TOKEN / AMO_ACCOUNT_ID в .env',
+                        ]);
+                        throw new \RuntimeException('amoCRM 401: долгосрочный токен недействителен или не для этого аккаунта');
+                    }
+                    $tokens = $this->refreshTokens($accountId, $tokens);
+                    $options['headers']['Authorization'] = 'Bearer ' . $tokens['access_token'];
+                    $refreshed = true;
+                    continue;
+                }
+
+                $retryable = $status === 429 || $status >= 500 || $status === 0;
+                if (!$retryable || $attempt >= self::RETRY_MAX) {
+                    $this->logger->error('amoCRM request failed', [
+                        'account_id' => $accountId, 'method' => $method, 'path' => $path,
+                        'status' => $status, 'attempt' => $attempt, 'error' => $e->getMessage(),
+                    ]);
+                    throw new \RuntimeException(
+                        'amoCRM ' . ($status ?: 'network') . ' ' . $method . ' ' . $path . ' после ' . $attempt . ' попыток: ' . mb_substr($e->getMessage(), 0, 200),
+                        $status, $e
+                    );
+                }
+                $delayMs = self::RETRY_BASE_MS * (2 ** ($attempt - 1));
+                if ($status === 429 && $resp && $resp->hasHeader('Retry-After')) {
+                    $delayMs = max($delayMs, (int) $resp->getHeaderLine('Retry-After') * 1000);
+                }
+                $this->logger->warning('amoCRM request retry', [
+                    'account_id' => $accountId, 'method' => $method, 'path' => $path,
+                    'status' => $status, 'attempt' => $attempt, 'delay_ms' => $delayMs,
+                ]);
+                usleep(min($delayMs, 5000) * 1000);
             }
         }
 

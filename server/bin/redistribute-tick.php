@@ -100,6 +100,13 @@ foreach ($accounts as $accountId) {
                 $logger->info('Waiting: lead fetch failed, dropping', ['lead_id' => $leadId, 'err' => $ex->getMessage()]);
                 unset($all[$key]); $changed = true; continue;
             }
+            // P0-3: пока заявка ждала, ответственного поменяли вручную — уважаем решение человека
+            if (($e['manual_change'] ?? 'allow') === 'respect' && isset($e['resp_at_queue'])
+                && (int) ($lead['responsible_user_id'] ?? 0) !== (int) $e['resp_at_queue']) {
+                $log->record($accountId, $leadId, $e['pipeline_id'] ?? null, $e['stage_id'] ?? null, (int) ($lead['responsible_user_id'] ?? 0) ?: null, $e['method'] ?? 'round_robin', 'skipped_manual_change');
+                $logger->info('Waiting: responsible changed manually, dropping', ['lead_id' => $leadId]);
+                unset($all[$key]); $changed = true; continue;
+            }
             if (!empty($e['stage_id']) && (int) ($lead['status_id'] ?? 0) !== (int) $e['stage_id']) {
                 $log->record($accountId, $leadId, $e['pipeline_id'] ?? null, $e['stage_id'] ?? null, null, $e['method'] ?? 'round_robin', 'queue_dropped_moved');
                 unset($all[$key]); $changed = true; continue;

@@ -39,6 +39,7 @@ class DistributionLog
         ?int    $managerId,
         string  $method,
         string  $reason,
+        array   $extra = [],
     ): void {
         $dir = $this->basePath;
         if (!is_dir($dir)) {
@@ -53,7 +54,7 @@ class DistributionLog
             'manager_id'  => $managerId,
             'method'      => $method,
             'reason'      => $reason,
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        ] + $extra, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
 
         file_put_contents(
             $this->basePath . '/' . $accountId . '.ndjson',

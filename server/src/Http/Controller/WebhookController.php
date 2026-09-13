@@ -72,6 +72,7 @@ class WebhookController
                     'id'          => (int) $data['id'],
                     'status_id'   => $data['status_id']   ?? null,
                     'pipeline_id' => $data['pipeline_id'] ?? null,
+                    'updated_at'  => $data['updated_at'] ?? null,
                     '_event'      => 'dp:' . $typeCode,
                 ];
             }
@@ -141,6 +142,7 @@ class WebhookController
                 'rules'               => $settings['rules'] ?? [],
                 'dp_settings'         => $dpSettings,
                 'event'               => $lead['_event'],
+                'event_key'           => \DealDist\Distribution\OperationJournal::keyFromWebhookLead($lead, (string) $lead['_event']),
             ];
 
             try {

@@ -54,6 +54,9 @@ class DistributionService
         $dpSettings = $payload['dp_settings']         ?? [];
 
         $force      = !empty($payload['force']);   // ручной запуск: без окна идемпотентности
+        $eventKey   = isset($payload['event_key']) ? (string) $payload['event_key'] : null;
+        $source     = (string) ($payload['event'] ?? 'webhook');
+        $journal    = new OperationJournal();
 
         $this->logger->info('Distribute called', compact('accountId', 'leadId', 'pipelineId', 'stageId', 'method', 'force'));
 
@@ -67,6 +70,14 @@ class DistributionService
             $this->log->record($accountId, $leadId, $pipelineId, $stageId, null, $method, 'skipped_duplicate');
             return null;
         }
+        // P0-2: журнал операций — повтор того же события (тот же этап + updated_at)
+        // спустя минуты/часы тоже дубль, без единого запроса к amoCRM.
+        if (!$force && $eventKey !== null && ($prev = $journal->seen($accountId, $leadId, $eventKey)) !== null) {
+            $guard->release($lock);
+            $this->logger->info('Duplicate event by journal key — skipping', ['lead_id' => $leadId, 'key' => $eventKey, 'prev' => $prev]);
+            $this->log->record($accountId, $leadId, $pipelineId, $stageId, null, $method, 'skipped_duplicate', ['event_key' => $eventKey]);
+            return null;
+        }
         if (!$force && $guard->recentlyAssigned($accountId, $leadId, $stageId)) {
             $guard->release($lock);
             $this->logger->info('Lead was assigned recently — skipping duplicate', compact('leadId'));
@@ -75,7 +86,19 @@ class DistributionService
         }
 
         try {
-            return $this->doDistribute($guard, $payload, $accountId, $leadId, $pipelineId, $stageId, $method, $rules, $dpSettings);
+            $res = $this->doDistribute($guard, $payload, $accountId, $leadId, $pipelineId, $stageId, $method, $rules, $dpSettings);
+            if ($eventKey !== null) {
+                $journal->mark($accountId, $leadId, $eventKey, $res ? 'done' : 'skipped', $res['assigned_to_id'] ?? null, $source);
+            }
+            return $res;
+        } catch (\Throwable $e) {
+            // P0-1: ошибка API/сети — видна администратору в истории, не только в логах.
+            $this->logger->error('Distribution failed', ['lead_id' => $leadId, 'error' => $e->getMessage()]);
+            $this->log->record($accountId, $leadId, $pipelineId, $stageId, null, $method, 'error', ['error' => mb_substr($e->getMessage(), 0, 300)]);
+            if ($eventKey !== null) {
+                $journal->mark($accountId, $leadId, $eventKey, 'failed', null, $source, $e->getMessage());
+            }
+            throw $e;
         } finally {
             $guard->release($lock);
         }
@@ -174,7 +197,7 @@ class DistributionService
                 'lead_id'     => $leadId,
                 'manager_ids' => $managerIds,
             ]);
-            if ($this->enqueueWaiting($accountId, $leadId, $pipelineId, $stageId, $rule, $managerIds, $method, 'offline')) {
+            if ($this->enqueueWaiting($accountId, $leadId, $pipelineId, $stageId, $rule, $managerIds, $method, 'offline', isset($leadData['responsible_user_id']) ? (int) $leadData['responsible_user_id'] : null)) {
                 return null;
             }
             $this->log->record($accountId, $leadId, $pipelineId, $stageId, null, $method, 'skipped_offline');
@@ -205,7 +228,7 @@ class DistributionService
                     'lead_id'     => $leadId,
                     'manager_ids' => $managerIds,
                 ]);
-                if ($this->enqueueWaiting($accountId, $leadId, $pipelineId, $stageId, $rule, $managerIds, $method, 'schedule')) {
+                if ($this->enqueueWaiting($accountId, $leadId, $pipelineId, $stageId, $rule, $managerIds, $method, 'schedule', isset($leadData['responsible_user_id']) ? (int) $leadData['responsible_user_id'] : null)) {
                     return null;
                 }
                 $this->log->record($accountId, $leadId, $pipelineId, $stageId, null, $method, 'skipped_schedule');
@@ -264,7 +287,7 @@ class DistributionService
      * у правила появится менеджер на смене и online. Включается в правиле
      * флагом queue_when_unavailable (по умолчанию выкл — поведение прежнее).
      */
-    private function enqueueWaiting(string $accountId, int $leadId, ?int $pipelineId, ?int $stageId, array $rule, array $managerIds, string $method, string $why): bool
+    private function enqueueWaiting(string $accountId, int $leadId, ?int $pipelineId, ?int $stageId, array $rule, array $managerIds, string $method, string $why, ?int $respAtQueue = null): bool
     {
         if (empty($rule['queue_when_unavailable'])) {
             return false;
@@ -283,6 +306,8 @@ class DistributionService
             'method'         => $method,
             'check_schedule' => !empty($rule['check_schedule']),
             'check_history'  => !empty($rule['check_history']),
+            'manual_change'  => (string) ($rule['manual_change'] ?? 'allow'),   // allow | respect
+            'resp_at_queue'  => $respAtQueue,
             'not_before'     => (string) ($rule['queue_release_after'] ?? ''),   // "HH:MM" или ''
             'max_wait_sec'   => (int) ($rule['queue_max_wait_hours'] ?? 36) * 3600,
             'queued_at'      => time(),
