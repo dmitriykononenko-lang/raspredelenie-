@@ -63,6 +63,7 @@ class AppFactory
         // Health check (для reverse-proxy / мониторинга)
         $app->get('/privacy', PrivacyController::class . ':ru');
         $app->get('/privacy/en', PrivacyController::class . ':en');
+        $app->get('/privacy/kommo', PrivacyController::class . ':kommo');
 
         // Раздача сборок виджета (zip) из STORAGE_PATH/dl/ — CORS даёт CorsMiddleware.
         $app->get('/dl/{file:[A-Za-z0-9._-]+\\.zip}', function ($request, $response, array $args) {
