@@ -20,6 +20,7 @@ use DealDist\Http\Controller\WebhookController;
 use DealDist\Http\Controller\AdminController;
 use DealDist\Http\Controller\AmoDataController;
 use DealDist\Http\Controller\PrivacyController;
+use DealDist\Http\Controller\SupportController;
 use DealDist\Http\Controller\BillingController;
 use DI\ContainerBuilder;
 use Monolog\Handler\StreamHandler;
@@ -50,7 +51,8 @@ class AppFactory
         // Slim app
         SlimAppFactory::setContainer($container);
         $app = SlimAppFactory::create();
-        $app->addErrorMiddleware(true, true, true);
+        // Детали ошибок (трассировка) — только при APP_DEBUG=1; в проде отдаём краткую страницу (замечание модерации amoCRM).
+        $app->addErrorMiddleware((bool) ($_ENV['APP_DEBUG'] ?? false), true, true);
         $app->add(new JsonMiddleware());
         $app->add(new CorsMiddleware());
         $app->add(new AuthMiddleware());
@@ -61,6 +63,10 @@ class AppFactory
         });
 
         // Health check (для reverse-proxy / мониторинга)
+        // Страница поддержки (ссылка «Техподдержка» в amoМаркете / Kommo). Корень домена раньше отдавал 404.
+        $app->get('/', SupportController::class . ':ru');
+        $app->get('/support', SupportController::class . ':ru');
+        $app->get('/support/en', SupportController::class . ':en');
         $app->get('/privacy', PrivacyController::class . ':ru');
         $app->get('/privacy/en', PrivacyController::class . ':en');
         $app->get('/privacy/kommo', PrivacyController::class . ':kommo');
