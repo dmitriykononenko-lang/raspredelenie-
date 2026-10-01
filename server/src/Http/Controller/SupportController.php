@@ -46,7 +46,7 @@ CSS;
 
   <div class="contacts">
     <div><b>E-mail:</b> <a href="mailto:hello@koagency.me">hello@koagency.me</a></div>
-    <div><b>Telegram:</b> <a href="https://t.me/ko_agency">@ko_agency</a></div>
+    <div><b>Telegram:</b> <a href="https://t.me/koagency_bot">Support koagency team · @koagency_bot</a></div>
     <div><b>Сайт:</b> <a href="https://koagency.me">koagency.me</a></div>
     <div><b>Часы:</b> пн–пт, 10:00–19:00 (МСК). Отвечаем в течение рабочего дня.</div>
   </div>
@@ -97,7 +97,7 @@ HTML;
 
   <div class="contacts">
     <div><b>E-mail:</b> <a href="mailto:hello@koagency.me">hello@koagency.me</a></div>
-    <div><b>Telegram:</b> <a href="https://t.me/ko_agency">@ko_agency</a></div>
+    <div><b>Telegram:</b> <a href="https://t.me/koagency_bot">Support koagency team · @koagency_bot</a></div>
     <div><b>Website:</b> <a href="https://koagency.me">koagency.me</a></div>
     <div><b>Hours:</b> Mon–Fri, 10:00–19:00 (UTC+3). We reply within one business day.</div>
   </div>
