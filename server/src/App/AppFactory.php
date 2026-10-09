@@ -141,6 +141,7 @@ class AppFactory
         $app->post('/admin/api/distribute', AdminController::class . ':distributeLead');
         $app->post('/admin/api/status', AdminController::class . ':setStatus');
         $app->get('/admin/api/users', AdminController::class . ':users');
+        $app->get('/admin/api/leads', AdminController::class . ':leads');
 
         // Billing (Ð Ð°ÑÐ¿ÑÐµÐ´ÐµÐ»ÐµÐ½Ð¸Ðµ) â Ð®Kassa
         $app->get('/api/billing/status', BillingController::class . ':status');

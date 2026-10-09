@@ -348,6 +348,21 @@ class AdminController
                 $logger,
             );
             $settings = (new \DealDist\Config\SettingsStorage())->load($account);
+            if (empty($b['force'])) {
+                $lead = (new \DealDist\AmoCRM\ApiClient($logger))->getLead($account, $leadId);
+                $statusId = (int) ($lead['status_id'] ?? 0);
+                $resp     = (string) ($lead['responsible_user_id'] ?? '');
+                if (in_array($statusId, [142, 143], true)) {
+                    return $this->jsonOut($response, ['ok' => false, 'status' => 'closed', 'hint' => 'сделка закрыта — не раздаём']);
+                }
+                $managers = [];
+                foreach (($settings['rules'] ?? []) as $r) {
+                    foreach (($r['managers'] ?? []) as $m) { $managers[] = (string) (is_array($m) ? ($m['id'] ?? '') : $m); }
+                }
+                if ($resp !== '' && in_array($resp, $managers, true)) {
+                    return $this->jsonOut($response, ['ok' => false, 'status' => 'already_assigned', 'hint' => 'уже у менеджера из правила']);
+                }
+            }
             $result = $service->distribute([
                 'account_id'          => $account,
                 'lead_id'             => $leadId,
@@ -379,6 +394,35 @@ class AdminController
         $online = filter_var($b['online'], FILTER_VALIDATE_BOOLEAN);
         (new \DealDist\Distribution\StatusStorage())->set($account, $userId, $online, null);
         return $this->jsonOut($response, ['ok' => true, 'account_id' => $account, 'user_id' => $userId, 'online' => $online]);
+    }
+
+    /** GET /admin/api/leads?account_id=&ids=1,2 — текущие ответственный и статус сделок (для списка нераспределённых). */
+    public function leads(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    {
+        if (!$this->authorized($request)) {
+            return $this->jsonOut($response, ['error' => 'unauthorized'], 401);
+        }
+        $q = $request->getQueryParams();
+        $account = preg_replace('/[^0-9]/', '', (string) ($q['account_id'] ?? ''));
+        $ids = array_slice(array_values(array_filter(array_map('intval', explode(',', (string) ($q['ids'] ?? ''))))), 0, 50);
+        if ($account === '' || !$ids) {
+            return $this->jsonOut($response, ['error' => 'bad_request'], 400);
+        }
+        $logger = new \Monolog\Logger('admin-panel');
+        $logger->pushHandler(new \Monolog\Handler\StreamHandler('php://stderr', \Monolog\Level::Warning));
+        $api = new \DealDist\AmoCRM\ApiClient($logger);
+        $out = [];
+        foreach ($ids as $id) {
+            try {
+                $l = $api->getLead($account, $id);
+                $st = (int) ($l['status_id'] ?? 0);
+                $out[] = ['lead_id' => $id, 'status_id' => $st, 'closed' => in_array($st, [142, 143], true),
+                          'responsible_id' => (string) ($l['responsible_user_id'] ?? ''), 'name' => (string) ($l['name'] ?? '')];
+            } catch (\Throwable $e) {
+                $out[] = ['lead_id' => $id, 'error' => true];
+            }
+        }
+        return $this->jsonOut($response, ['ok' => true, 'leads' => $out]);
     }
 
     /** GET /admin/api/users?account_id= — пользователи аккаунта (имена менеджеров) через bootstrap. */
@@ -561,7 +605,7 @@ class AdminController
                 $b = basename($p);
                 $b = preg_replace('/\.(json|ndjson)$/', '', $b);
                 $b = preg_replace('/\.history$/', '', (string) $b);
-                if (preg_match('/^\d+$/', (string) $b)) { $ids[$b] = true; }
+                if (preg_match('/^\d+$/', (string) $b) && (string) $b !== '0') { $ids[$b] = true; }
             }
         }
         foreach (glob($this->storage . '/schedules/*', GLOB_ONLYDIR) ?: [] as $p) {
