@@ -350,6 +350,9 @@ class AdminController
             $settings = (new \DealDist\Config\SettingsStorage())->load($account);
             if (empty($b['force'])) {
                 $lead = (new \DealDist\AmoCRM\ApiClient($logger))->getLead($account, $leadId);
+                if (!is_array($lead) || empty($lead['id'])) {
+                    return $this->jsonOut($response, ['ok' => false, 'status' => 'not_found', 'hint' => 'сделка не найдена в amoCRM']);
+                }
                 $statusId = (int) ($lead['status_id'] ?? 0);
                 $resp     = (string) ($lead['responsible_user_id'] ?? '');
                 if (in_array($statusId, [142, 143], true)) {
