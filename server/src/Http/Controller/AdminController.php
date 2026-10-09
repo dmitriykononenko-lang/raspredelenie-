@@ -128,7 +128,10 @@ class AdminController
                 $subscriptions[$wk] = $st;
             }
 
+            $health = $this->health((string) $acc, $rules, is_array($statuses) ? $statuses : [], $subscriptions['raspredelenie'] ?? []);
+
             $accounts[] = [
+                'health'        => $health,
                 'account_id'    => (string) $acc,
                 'domain'        => $domain,
                 'token'         => ['present' => $tokenPresent, 'kind' => $tokenKind, 'exp' => $tokenExp],
@@ -158,13 +161,9 @@ class AdminController
                     'title'    => 'Распределение',
                     'accounts' => $accounts,
                 ],
-                'dubli' => [
-                    'title'     => 'Дубли',
-                    'available' => false,
-                    'note'      => 'Подключается: нужна связка с БД Дублей (pgsql + сеть).',
-                    'accounts'  => [],
-                ],
+                'dubli' => $this->hubWidget('dubli', 'Дубли'),
             ],
+            'hub' => $this->hubMeta(),
         ];
 
         $response->getBody()->write(json_encode($out, JSON_UNESCAPED_UNICODE));
@@ -271,6 +270,284 @@ class AdminController
         $status = (int) ($res['status'] ?? 200);
         unset($res['status']);
         return $this->jsonOut($response, $res, $status);
+    }
+
+    /* ---------------------- API: платежи / действия ---------------------- */
+
+    /** GET /admin/api/payments — последние платежи «Распределения» (ЮKassa/админ) + платежи хаба (Дубли). */
+    public function payments(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    {
+        if (!$this->authorized($request)) {
+            return $this->jsonOut($response, ['error' => 'unauthorized'], 401);
+        }
+        $rows = [];
+        foreach (glob($this->storage . '/payments/*.json') ?: [] as $f) {
+            $d = $this->readJson($f);
+            if (!$d) { continue; }
+            $rows[] = [
+                'id'         => substr(basename($f, '.json'), 0, 12),
+                'widget'     => (string) ($d['widget'] ?? 'raspredelenie'),
+                'account_id' => (string) ($d['account_id'] ?? ''),
+                'amount'     => (float) ($d['amount'] ?? 0),
+                'months'     => (int) ($d['months'] ?? 0),
+                'users'      => (int) ($d['users'] ?? 0),
+                'status'     => (string) ($d['status'] ?? ''),
+                'applied'    => (bool) ($d['applied'] ?? false),
+                'source'     => (string) ($d['source'] ?? ''),
+                'ts'         => (int) ($d['ts'] ?? @filemtime($f)),
+            ];
+        }
+        $hub = $this->readJson($this->storage . '/admin/hub.json');
+        foreach (($hub['payments'] ?? []) as $p) {
+            $rows[] = [
+                'id'         => 'hub-' . (string) ($p['id'] ?? ''),
+                'widget'     => (string) ($p['product'] ?? 'dubli'),
+                'account_id' => (string) ($p['account_id'] ?? ''),
+                'amount'     => (float) ($p['amount'] ?? 0),
+                'months'     => (int) ($p['months'] ?? 0),
+                'users'      => (int) ($p['users'] ?? 0),
+                'status'     => (string) ($p['status'] ?? ''),
+                'applied'    => true,
+                'source'     => (string) ($p['source'] ?? 'hub'),
+                'ts'         => (int) ($p['ts'] ?? 0),
+            ];
+        }
+        usort($rows, static fn($a, $b) => $b['ts'] <=> $a['ts']);
+        $names = $this->subdomains();
+        foreach ($rows as &$r) { $r['subdomain'] = $names[$r['account_id']] ?? ''; }
+        unset($r);
+        $monthStart = strtotime(date('Y-m-01 00:00:00'));
+        $sumMonth = 0.0;
+        foreach ($rows as $r) {
+            if ($r['ts'] >= $monthStart && in_array($r['status'], ['succeeded', 'paid', 'ok', 'applied'], true)) { $sumMonth += $r['amount']; }
+        }
+        return $this->jsonOut($response, ['ok' => true, 'month_sum' => $sumMonth, 'payments' => array_slice($rows, 0, 100)]);
+    }
+
+    /** POST /admin/api/distribute  { account_id, lead_id } — раздать сделку по сохранённым правилам (как кнопка в виджете). */
+    public function distributeLead(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    {
+        if (!$this->authorized($request)) {
+            return $this->jsonOut($response, ['error' => 'unauthorized'], 401);
+        }
+        $b       = $this->body($request);
+        $account = preg_replace('/[^0-9]/', '', (string) ($b['account_id'] ?? ''));
+        $leadId  = (int) ($b['lead_id'] ?? 0);
+        if ($account === '' || $leadId <= 0) {
+            return $this->jsonOut($response, ['error' => 'bad_request', 'need' => 'account_id, lead_id'], 400);
+        }
+        try {
+            $logger = new \Monolog\Logger('admin-panel');
+            $logger->pushHandler(new \Monolog\Handler\StreamHandler('php://stderr', \Monolog\Level::Warning));
+            $service = new \DealDist\Distribution\DistributionService(
+                new \DealDist\AmoCRM\ApiClient($logger),
+                new \DealDist\Distribution\QueueStorage(),
+                new \DealDist\Distribution\ScheduleChecker(),
+                new \DealDist\Distribution\StatusStorage(),
+                new \DealDist\Distribution\DistributionLog(),
+                $logger,
+            );
+            $settings = (new \DealDist\Config\SettingsStorage())->load($account);
+            $result = $service->distribute([
+                'account_id'          => $account,
+                'lead_id'             => $leadId,
+                'force'               => true,
+                'rules'               => $settings['rules'] ?? [],
+                'distribution_method' => $settings['distribution_method'] ?? 'round_robin',
+            ]);
+            if ($result === null) {
+                return $this->jsonOut($response, ['ok' => false, 'status' => 'skipped', 'hint' => 'нет подходящего правила или все менеджеры недоступны']);
+            }
+            return $this->jsonOut($response, ['ok' => true, 'assigned_to' => $result['assigned_to_name'] ?? '', 'user_id' => $result['assigned_to_id'] ?? null]);
+        } catch (\Throwable $e) {
+            return $this->jsonOut($response, ['error' => 'internal_error', 'detail' => $e->getMessage()], 500);
+        }
+    }
+
+    /** POST /admin/api/status  { account_id, user_id, online } — включить/выключить менеджера в распределении. */
+    public function setStatus(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    {
+        if (!$this->authorized($request)) {
+            return $this->jsonOut($response, ['error' => 'unauthorized'], 401);
+        }
+        $b       = $this->body($request);
+        $account = preg_replace('/[^0-9]/', '', (string) ($b['account_id'] ?? ''));
+        $userId  = (int) ($b['user_id'] ?? 0);
+        if ($account === '' || $userId <= 0 || !array_key_exists('online', $b)) {
+            return $this->jsonOut($response, ['error' => 'bad_request', 'need' => 'account_id, user_id, online'], 400);
+        }
+        $online = filter_var($b['online'], FILTER_VALIDATE_BOOLEAN);
+        (new \DealDist\Distribution\StatusStorage())->set($account, $userId, $online, null);
+        return $this->jsonOut($response, ['ok' => true, 'account_id' => $account, 'user_id' => $userId, 'online' => $online]);
+    }
+
+    /** GET /admin/api/users?account_id= — пользователи аккаунта (имена менеджеров) через bootstrap. */
+    public function users(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    {
+        if (!$this->authorized($request)) {
+            return $this->jsonOut($response, ['error' => 'unauthorized'], 401);
+        }
+        $logger = new \Monolog\Logger('admin-panel');
+        $logger->pushHandler(new \Monolog\Handler\StreamHandler('php://stderr', \Monolog\Level::Warning));
+        return (new AmoDataController($logger))->bootstrap($request, $response)->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /* ------------------------- здоровье аккаунта ------------------------- */
+
+    /**
+     * Сводка «здоровья» распределения за 24 ч и список проблем для админ-панели.
+     * @param array<int,array> $rules
+     * @param array<string,array> $statuses
+     */
+    private function health(string $acc, array $rules, array $statuses, array $sub): array
+    {
+        $now   = time();
+        $since = $now - 86400;
+        $log   = $this->tailNdjson($this->storage . '/logs/' . $acc . '.ndjson', 3000);
+
+        $stats = ['assigned' => 0, 'skipped' => 0, 'errors' => 0, 'by_reason' => []];
+        $lastByLead = [];
+        foreach ($log as $e) {
+            $ts = (int) ($e['ts'] ?? 0);
+            $reason = (string) ($e['reason'] ?? '');
+            $lead = (int) ($e['lead_id'] ?? 0);
+            if ($lead) { $lastByLead[$lead] = $e; }
+            if ($ts < $since) { continue; }
+            $stats['by_reason'][$reason] = ($stats['by_reason'][$reason] ?? 0) + 1;
+            if (in_array($reason, ['assigned', 'redistributed', 'history_match'], true)) { $stats['assigned']++; }
+            elseif (strncmp($reason, 'skipped', 7) === 0 || $reason === 'no_managers') { $stats['skipped']++; }
+            elseif ($reason === 'error') { $stats['errors']++; }
+        }
+
+        // нераспределённые за 48 ч: последняя запись по сделке — skipped/error
+        $skipped = [];
+        foreach ($lastByLead as $lead => $e) {
+            $ts = (int) ($e['ts'] ?? 0);
+            $reason = (string) ($e['reason'] ?? '');
+            if ($ts >= $now - 172800 && (strncmp($reason, 'skipped', 7) === 0 || $reason === 'error' || $reason === 'no_managers')
+                && $reason !== 'skipped_duplicate' && $reason !== 'skipped_no_rule') {
+                $skipped[] = ['lead_id' => $lead, 'reason' => $reason, 'ts' => $ts];
+            }
+        }
+        usort($skipped, static fn($a, $b) => $b['ts'] <=> $a['ts']);
+
+        // менеджеры правил и их статус
+        $ruleManagers = [];
+        $modes = [];
+        $checkSchedule = false;
+        foreach ($rules as $r) {
+            $modes[] = (string) ($r['offshift_mode'] ?? 'skip');
+            if (!empty($r['check_schedule'])) { $checkSchedule = true; }
+            foreach (($r['managers'] ?? []) as $m) {
+                $id = (string) (is_array($m) ? ($m['id'] ?? '') : $m);
+                if ($id !== '') { $ruleManagers[$id] = true; }
+            }
+        }
+        $offline = [];
+        foreach (array_keys($ruleManagers) as $id) {
+            if (isset($statuses[$id]) && empty($statuses[$id]['online'])) { $offline[] = (string) $id; }
+        }
+
+        // месячный график на текущий месяц
+        $monthFile = $this->storage . '/schedules_month/' . $acc . '/' . date('Y-m') . '.json';
+        $month = $this->readJson($monthFile);
+        $monthFilled = is_array($month) && !empty($month['grid'] ?? $month);
+
+        $issues = [];
+        if ($rules === []) { $issues[] = ['level' => 'warn', 'text' => 'Нет правил распределения']; }
+        if ($ruleManagers && count($offline) === count($ruleManagers)) {
+            $issues[] = ['level' => 'error', 'text' => 'Все менеджеры правил выключены'];
+        } elseif ($offline) {
+            $issues[] = ['level' => 'warn', 'text' => 'Выключены менеджеры правил: ' . count($offline)];
+        }
+        if ($stats['errors'] > 0) { $issues[] = ['level' => 'error', 'text' => 'Ошибки за 24 ч: ' . $stats['errors']]; }
+        if (count($skipped) > 0) { $issues[] = ['level' => 'warn', 'text' => 'Нераспределённых сделок за 48 ч: ' . count($skipped)]; }
+        if ($checkSchedule && in_array('skip', $modes, true)) {
+            $issues[] = ['level' => 'info', 'text' => 'Вне смены сделки пропускаются (режим «пропустить»)'];
+        }
+        $days = $sub['days_left'] ?? null;
+        $subStatus = (string) ($sub['status'] ?? '');
+        if ($subStatus === 'expired') {
+            $issues[] = ['level' => 'error', 'text' => 'Подписка истекла'];
+        } elseif ($subStatus === 'soon' || (is_int($days) && $days <= 7)) {
+            $issues[] = ['level' => 'warn', 'text' => 'Подписка заканчивается через ' . (int) $days . ' дн.'];
+        } elseif ($subStatus === 'none') {
+            $issues[] = ['level' => 'info', 'text' => 'Срок подписки не задан'];
+        }
+        $lastAssigned = 0;
+        foreach (array_reverse($log) as $e) {
+            if (in_array((string) ($e['reason'] ?? ''), ['assigned', 'redistributed', 'history_match'], true)) { $lastAssigned = (int) $e['ts']; break; }
+        }
+
+        return [
+            'stats24h'       => $stats,
+            'skipped'        => array_slice($skipped, 0, 50),
+            'rule_managers'  => array_keys($ruleManagers),
+            'offline'        => $offline,
+            'offshift_modes' => array_values(array_unique($modes)),
+            'check_schedule' => $checkSchedule,
+            'month_filled'   => $monthFilled,
+            'last_assigned'  => $lastAssigned,
+            'issues'         => $issues,
+            'level'          => $this->worstLevel($issues),
+        ];
+    }
+
+    private function worstLevel(array $issues): string
+    {
+        $rank = ['ok' => 0, 'info' => 1, 'warn' => 2, 'error' => 3];
+        $w = 'ok';
+        foreach ($issues as $i) {
+            $l = (string) ($i['level'] ?? 'ok');
+            if (($rank[$l] ?? 0) > $rank[$w]) { $w = $l; }
+        }
+        return $w;
+    }
+
+    /* ------------------------- данные хаба (Дубли) ------------------------ */
+
+    /** @return array<string,string> account_id => subdomain (из выгрузки хаба). */
+    private function subdomains(): array
+    {
+        $hub = $this->readJson($this->storage . '/admin/hub.json');
+        $out = [];
+        foreach (($hub['accounts'] ?? []) as $a) {
+            $out[(string) ($a['account_id'] ?? '')] = (string) ($a['subdomain'] ?? '');
+        }
+        return $out;
+    }
+
+    private function hubMeta(): array
+    {
+        $hub = $this->readJson($this->storage . '/admin/hub.json');
+        return [
+            'available'    => is_array($hub),
+            'generated_at' => (int) ($hub['generated_at'] ?? 0),
+            'subdomains'   => $this->subdomains(),
+        ];
+    }
+
+    private function hubWidget(string $product, string $title): array
+    {
+        $hub = $this->readJson($this->storage . '/admin/hub.json');
+        if (!is_array($hub)) {
+            return ['title' => $title, 'available' => false, 'note' => 'Нет выгрузки хаба (cron /opt/hub-sync/export-admin.py).', 'accounts' => []];
+        }
+        $names = $this->subdomains();
+        $accounts = [];
+        foreach (($hub['subscriptions'] ?? []) as $s) {
+            if ((string) ($s['product'] ?? '') !== $product) { continue; }
+            $paid = isset($s['paid_till']) && $s['paid_till'] ? (int) $s['paid_till'] : null;
+            $accounts[] = [
+                'account_id' => (string) $s['account_id'],
+                'subdomain'  => $names[(string) $s['account_id']] ?? '',
+                'status'     => (string) ($s['status'] ?? ''),
+                'paid_until' => $paid,
+                'days_left'  => $paid ? (int) floor(($paid - time()) / 86400) : null,
+                'users'      => (int) ($s['users'] ?? 0),
+            ];
+        }
+        return ['title' => $title, 'available' => true, 'generated_at' => (int) ($hub['generated_at'] ?? 0), 'accounts' => $accounts];
     }
 
     /* ----------------------------- helpers ------------------------------ */

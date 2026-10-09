@@ -137,6 +137,10 @@ class AppFactory
         $app->post('/admin/api/extend', AdminController::class . ':extend');
         $app->post('/admin/api/set-until', AdminController::class . ':setUntil');
         $app->post('/admin/api/billing-link', AdminController::class . ':billingLink');
+        $app->get('/admin/api/payments', AdminController::class . ':payments');
+        $app->post('/admin/api/distribute', AdminController::class . ':distributeLead');
+        $app->post('/admin/api/status', AdminController::class . ':setStatus');
+        $app->get('/admin/api/users', AdminController::class . ':users');
 
         // Billing (Ð Ð°ÑÐ¿ÑÐµÐ´ÐµÐ»ÐµÐ½Ð¸Ðµ) â Ð®Kassa
         $app->get('/api/billing/status', BillingController::class . ':status');
