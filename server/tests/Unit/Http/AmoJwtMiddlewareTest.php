@@ -36,7 +36,7 @@ final class AmoJwtMiddlewareTest extends TestCase
     }
 
     /** @return array{0:ResponseInterface,1:?ServerRequestInterface} */
-    private function run(string $uri, array $headers): array
+    private function call(string $uri, array $headers): array
     {
         $req = (new ServerRequestFactory())->createServerRequest('GET', $uri);
         parse_str((string) parse_url($uri, PHP_URL_QUERY), $q);
@@ -61,7 +61,7 @@ final class AmoJwtMiddlewareTest extends TestCase
 
     public function test_valid_token_fills_missing_account_header(): void
     {
-        [$res, $seen] = $this->run('/api/status', ['X-Auth-Token' => self::jwt(self::claims())]);
+        [$res, $seen] = $this->call('/api/status', ['X-Auth-Token' => self::jwt(self::claims())]);
         self::assertSame(200, $res->getStatusCode());
         self::assertSame('111', $seen->getHeaderLine('X-Account-Id'));
         self::assertSame('verified', $seen->getAttribute('amo_jwt'));
@@ -69,29 +69,29 @@ final class AmoJwtMiddlewareTest extends TestCase
 
     public function test_foreign_account_is_forbidden(): void
     {
-        [$res] = $this->run('/api/status', ['X-Auth-Token' => self::jwt(self::claims()), 'X-Account-Id' => '222']);
+        [$res] = $this->call('/api/status', ['X-Auth-Token' => self::jwt(self::claims()), 'X-Account-Id' => '222']);
         self::assertSame(403, $res->getStatusCode());
-        [$res] = $this->run('/api/amo/bootstrap?account_id=222', ['X-Auth-Token' => self::jwt(self::claims())]);
+        [$res] = $this->call('/api/amo/bootstrap?account_id=222', ['X-Auth-Token' => self::jwt(self::claims())]);
         self::assertSame(403, $res->getStatusCode());
-        [$res] = $this->run('/api/amo/bootstrap?subdomain=other', ['X-Auth-Token' => self::jwt(self::claims())]);
+        [$res] = $this->call('/api/amo/bootstrap?subdomain=other', ['X-Auth-Token' => self::jwt(self::claims())]);
         self::assertSame(403, $res->getStatusCode());
-        [$res] = $this->run('/api/amo/bootstrap?subdomain=acme', ['X-Auth-Token' => self::jwt(self::claims())]);
+        [$res] = $this->call('/api/amo/bootstrap?subdomain=acme', ['X-Auth-Token' => self::jwt(self::claims())]);
         self::assertSame(200, $res->getStatusCode());
     }
 
     public function test_soft_mode_passes_old_widgets_and_enforce_blocks(): void
     {
-        [$res, $seen] = $this->run('/api/status', ['X-Account-Id' => '111']);
+        [$res, $seen] = $this->call('/api/status', ['X-Account-Id' => '111']);
         self::assertSame(200, $res->getStatusCode());
         self::assertSame('none', $seen->getAttribute('amo_jwt'));
-        [$res, $seen] = $this->run('/api/status', ['X-Account-Id' => '111', 'X-Auth-Token' => 'bad.token.here']);
+        [$res, $seen] = $this->call('/api/status', ['X-Account-Id' => '111', 'X-Auth-Token' => 'bad.token.here']);
         self::assertSame(200, $res->getStatusCode());
         self::assertSame('invalid', $seen->getAttribute('amo_jwt'));
 
         $_ENV['AMO_JWT_ENFORCE'] = 'true';
-        [$res] = $this->run('/api/status', ['X-Account-Id' => '111']);
+        [$res] = $this->call('/api/status', ['X-Account-Id' => '111']);
         self::assertSame(401, $res->getStatusCode());
-        [$res] = $this->run('/health', []);
+        [$res] = $this->call('/health', []);
         self::assertSame(200, $res->getStatusCode());
     }
 }
