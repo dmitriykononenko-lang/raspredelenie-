@@ -412,10 +412,14 @@ class DistributionService
 
     private function pickRoundRobin(string $accountId, array $rule, array $managerIds): int
     {
-        $ruleHash = md5(json_encode([
+        $key = [
             'pipeline_id' => $rule['pipeline_id'] ?? null,
             'stage_id'    => $rule['stage_id']    ?? null,
-        ]));
+        ];
+        if (!empty($rule['_queue_key'])) {
+            $key['dp'] = (string) $rule['_queue_key']; // 1.3.21: триггер со своими менеджерами
+        }
+        $ruleHash = md5(json_encode($key));
 
         return $this->queueStorage->getNextManager($accountId, $ruleHash, $managerIds);
     }

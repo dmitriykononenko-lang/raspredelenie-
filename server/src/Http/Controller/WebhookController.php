@@ -191,15 +191,39 @@ class WebhookController
      */
     private function normalizeDpSettings(array $ws): array
     {
+        // 1.3.21: настройки действия приходят строкой config (manifest dp.settings,
+        // type text): JSON {"managers":[id,…],"check_history":bool,"check_schedule":bool}
+        // или просто «id, id». Пустой config — работают правила виджета.
+        if (isset($ws['config']) && is_string($ws['config']) && trim($ws['config']) !== '') {
+            $raw = trim($ws['config']);
+            $cfg = json_decode($raw, true);
+            if (!is_array($cfg)) {
+                $cfg = ['managers' => preg_split('/[\s,;]+/', $raw, -1, PREG_SPLIT_NO_EMPTY)];
+            } elseif (array_is_list($cfg)) {
+                $cfg = ['managers' => $cfg];
+            }
+            $ws = array_merge($ws, $cfg);
+        }
+        unset($ws['config']);
         $out = $ws;
         $managers = [];
-        foreach ((array) ($ws['managers'] ?? []) as $m) {
+        $mgrRaw = $ws['managers'] ?? [];
+        if (is_string($mgrRaw)) {
+            $mgrRaw = preg_split('/[\s,;]+/', $mgrRaw, -1, PREG_SPLIT_NO_EMPTY);
+        }
+        foreach ((array) $mgrRaw as $m) {
             $id = is_array($m) ? ($m['id'] ?? null) : $m;
             if ($id !== null && $id !== '' && (int) $id > 0) {
                 $managers[] = ['id' => (int) $id];
             }
         }
         $out['managers'] = $managers;
+        if ($managers) {
+            // своя очередь round-robin у каждой группы менеджеров триггера
+            $ids = array_column($managers, 'id');
+            sort($ids);
+            $out['_queue_key'] = 'dp:' . implode(',', $ids);
+        }
         foreach (['check_history', 'check_schedule'] as $flag) {
             if (array_key_exists($flag, $ws)) {
                 $out[$flag] = filter_var($ws[$flag], FILTER_VALIDATE_BOOL);
