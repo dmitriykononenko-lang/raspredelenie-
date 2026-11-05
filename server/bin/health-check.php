@@ -19,7 +19,9 @@ function tg(string $text): void {
     $tok = $_ENV['TG_BOT_TOKEN'] ?? ''; $chat = $_ENV['TG_CHAT_ID'] ?? '';
     if ($tok === '' || $chat === '') { echo "[no-telegram] $text\n"; return; }
     $ctx = stream_context_create(['http' => ['method' => 'POST', 'header' => "Content-Type: application/x-www-form-urlencoded\r\n",
-        'content' => http_build_query(['chat_id' => $chat, 'text' => $text, 'parse_mode' => 'HTML', 'disable_web_page_preview' => 1]), 'timeout' => 10]]);
+        'content' => http_build_query(['chat_id' => $chat, 'text' => $text, 'parse_mode' => 'HTML', 'disable_web_page_preview' => 1]), 'timeout' => 10]
+        // api.telegram.org заблокирован из РФ — ходим через xray-релей на хосте (TG_PROXY=tcp://172.19.0.1:18080)
+        + (($p = (string) ($_ENV['TG_PROXY'] ?? '')) !== '' ? ['proxy' => $p] : [])]);
     $r = @file_get_contents("https://api.telegram.org/bot$tok/sendMessage", false, $ctx);
     echo $r === false ? "[telegram FAILED] $text\n" : "[sent] " . substr($text, 0, 60) . "\n";
 }

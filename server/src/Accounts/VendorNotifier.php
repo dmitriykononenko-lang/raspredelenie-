@@ -10,7 +10,7 @@ use Monolog\Logger;
 /**
  * Сообщает нам о жизни клиента: установка, отключение, этапы.
  *
- *   • Telegram — TG_BOT_TOKEN / TG_CHAT_ID (если пусто — только лог);
+ *   • Telegram — TG_BOT_TOKEN / TG_CHAT_ID (если пусто — только лог), TG_PROXY — релей (из РФ api.telegram.org закрыт);
  *   • сделка в нашей amoCRM (koagency) в воронке вендора — как у «Дублей»:
  *       RASP_VENDOR_ACCOUNT_ID (по умолчанию 30119215 — koagency, токен уже есть),
  *       VENDOR_PIPELINE_ID / VENDOR_STATUS_INSTALLED (по умолчанию воронка «Дублей» 11130042 / 87378418),
@@ -71,12 +71,18 @@ final class VendorNotifier
             $this->logger->info('Telegram not configured — message skipped', ['text' => mb_substr(strip_tags($html), 0, 200)]);
             return;
         }
-        $ctx = stream_context_create(['http' => [
+        $http = [
             'method'  => 'POST',
             'header'  => "Content-Type: application/x-www-form-urlencoded\r\n",
             'content' => http_build_query(['chat_id' => $chat, 'text' => $html, 'parse_mode' => 'HTML', 'disable_web_page_preview' => 1]),
             'timeout' => 8,
-        ]]);
+        ];
+        // api.telegram.org заблокирован из РФ — ходим через xray-релей на хосте (TG_PROXY=tcp://172.19.0.1:18080)
+        $proxy = (string) ($_ENV['TG_PROXY'] ?? '');
+        if ($proxy !== '') {
+            $http['proxy'] = $proxy;
+        }
+        $ctx = stream_context_create(['http' => $http]);
         if (@file_get_contents('https://api.telegram.org/bot' . $tok . '/sendMessage', false, $ctx) === false) {
             $this->logger->warning('Telegram send failed');
         }
