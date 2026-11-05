@@ -75,10 +75,25 @@ class OAuthController
             $accountData = json_decode((string) $accountResp->getBody(), true, 512, JSON_THROW_ON_ERROR);
             $accountId   = (string) ($accountData['id'] ?? md5($domain));
 
-            (new ApiClient($this->logger))->saveTokens($accountId, $domain, $tokens);
+            $api = new ApiClient($this->logger);
+            $api->saveTokens($accountId, $domain, $tokens);
 
             // (3) Лог успеха.
             $this->logger->info('OAuth: токены получены и сохранены', ['account_id' => $accountId, 'domain' => $domain]);
+
+            // 05.11.2026: карточка клиента (компания, установивший, пользователи) +
+            // уведомление нам (Telegram, сделка в koagency). Не должно ломать установку.
+            try {
+                $registry = new \DealDist\Accounts\AccountRegistry();
+                $rec      = $registry->onInstall($accountId, $domain, $api);
+                (new \DealDist\Accounts\VendorNotifier($api, $this->logger, $registry))->installed($accountId, $rec);
+                $this->logger->info('Install recorded', [
+                    'account_id' => $accountId, 'name' => $rec['name'] ?? '', 'installer' => $rec['installer']['email'] ?? '',
+                    'users_active' => $rec['users_active'] ?? null,
+                ]);
+            } catch (\Throwable $e) {
+                $this->logger->warning('Install record failed', ['account_id' => $accountId, 'error' => mb_substr($e->getMessage(), 0, 300)]);
+            }
 
             return $this->html($response, 'Авторизация успешна. Можно закрыть это окно.');
         } catch (RequestException $e) {
@@ -94,6 +109,35 @@ class OAuthController
             $this->logger->error('OAuth callback: непредвиденная ошибка', ['error' => $e->getMessage()]);
             return $this->html($response, 'Установка завершена. Авторизацию нужно повторить (см. логи сервера).');
         }
+    }
+
+    /**
+     * Хук отключения интеграции (URL задаётся в кабинете интеграции amoCRM/Kommo).
+     * amoCRM шлёт account_id, client_uuid, signature = HMAC-SHA256(client_uuid|account_id, client_secret).
+     * Принимаем GET и POST. Токены не удаляем — только отмечаем и сообщаем нам.
+     */
+    public function uninstall(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    {
+        $p = array_merge($request->getQueryParams(), (array) ($request->getParsedBody() ?? []));
+        $accountId = preg_replace('/[^0-9]/', '', (string) ($p['account_id'] ?? ''));
+        $clientId  = (string) ($p['client_uuid'] ?? $p['client_id'] ?? '');
+        $signature = (string) ($p['signature'] ?? '');
+        $secret    = (string) ($_ENV['AMO_CLIENT_SECRET'] ?? '');
+        $verified  = $accountId !== '' && $secret !== '' && $signature !== ''
+            && hash_equals(hash_hmac('sha256', $clientId . '|' . $accountId, $secret), $signature);
+
+        $this->logger->info('Uninstall hook', ['account_id' => $accountId, 'verified' => $verified]);
+        if ($accountId === '') {
+            return $this->text($response, 'ok');
+        }
+        try {
+            $registry = new \DealDist\Accounts\AccountRegistry();
+            $rec = $verified ? $registry->markUninstalled($accountId, true) : $registry->save($accountId, ['uninstall_signal_at' => time()]);
+            (new \DealDist\Accounts\VendorNotifier(new ApiClient($this->logger), $this->logger, $registry))->uninstalled($accountId, $rec, $verified);
+        } catch (\Throwable $e) {
+            $this->logger->warning('Uninstall record failed', ['account_id' => $accountId, 'error' => $e->getMessage()]);
+        }
+        return $this->text($response, 'ok');
     }
 
     private function text(ResponseInterface $response, string $text, int $status = 200): ResponseInterface

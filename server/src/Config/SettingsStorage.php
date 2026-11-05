@@ -38,6 +38,18 @@ class SettingsStorage
             );
         }
 
+        // 05.11.2026: виджет может прислать rules:[] , если не успел загрузить
+        // сотрудников или правила (сбой сети, новый аккаунт). Пустой список не
+        // затирает рабочие правила, пока клиент явно не подтвердил удаление
+        // (allow_empty_rules: true — шлёт виджет 1.3.21+ при удалении последнего правила).
+        $existing = $this->load($accountId);
+        if (array_key_exists('rules', $settings) && empty($settings['rules'])
+            && !empty($existing['rules']) && empty($settings['allow_empty_rules'])) {
+            $settings['rules'] = $existing['rules'];
+            $settings['_kept_rules_at'] = time();
+        }
+        unset($settings['allow_empty_rules']);
+
         // Страховка: предыдущая версия рядом (для быстрого отката).
         if (file_exists($file)) {
             @copy($file, $file . '.prev');

@@ -140,6 +140,22 @@ class DistributionService
             return null;
         }
 
+        // ── 2b. Отключённые / удалённые в amoCRM пользователи не получают сделки ──
+        // Реальный кейс koagency (13.09–12.10): уволенный сотрудник остался в правиле,
+        // amoCRM отвечал NotSupportedChoice, и каждая N-я заявка оставалась без распределения.
+        $activeIds = $this->apiClient->getActiveUserIds($accountId);
+        if (is_array($activeIds) && $activeIds) {
+            $inactive = array_values(array_diff($managerIds, $activeIds));
+            if ($inactive) {
+                $this->logger->warning('Inactive users in rule — skipped', ['lead_id' => $leadId, 'inactive' => $inactive]);
+                $managerIds = array_values(array_intersect($managerIds, $activeIds));
+            }
+            if (empty($managerIds)) {
+                $this->log->record($accountId, $leadId, $pipelineId, $stageId, null, $method, 'skipped_no_managers', ['inactive' => $inactive]);
+                return null;
+            }
+        }
+
         // ── 3. История клиента: тот же клиент → тот же менеджер ─────────────
         // Кандидаты — ответственные по прошлым сделкам контакта/компании (свежие
         // первыми). Берём первого, кто (а) входит в менеджеров правила,
@@ -243,7 +259,30 @@ class DistributionService
         };
 
         // ── 7. Assign ─────────────────────────────────────────────────────────
-        $this->apiClient->updateLeadResponsible($accountId, $leadId, $chosenId);
+        // Если amoCRM отказал (пользователь отключён после кэша) — берём следующего.
+        $tried = [];
+        while (true) {
+            try {
+                $this->apiClient->updateLeadResponsible($accountId, $leadId, $chosenId);
+                break;
+            } catch (\RuntimeException $e) {
+                if (!$this->isInactiveUserError($e)) {
+                    throw $e;
+                }
+                $this->apiClient->forgetActiveUsers($accountId);
+                $tried[] = $chosenId;
+                $this->logger->warning('amoCRM rejected responsible (inactive user) — trying next', ['lead_id' => $leadId, 'user_id' => $chosenId]);
+                $this->log->record($accountId, $leadId, $pipelineId, $stageId, $chosenId, $method, 'skipped_inactive_user');
+                $availableManagers = array_values(array_diff($availableManagers, $tried));
+                if (empty($availableManagers) || count($tried) >= 5) {
+                    throw $e;
+                }
+                $chosenId = match ($method) {
+                    'workload' => $this->pickByWorkload($accountId, $availableManagers),
+                    default    => $this->pickRoundRobin($accountId, $rule, $availableManagers),
+                };
+            }
+        }
         try { $this->apiClient->reassignOpenTasks($accountId, $leadId, $chosenId); } catch (\Throwable $t) {}
 
         // ── 8. Log ────────────────────────────────────────────────────────────
@@ -317,6 +356,19 @@ class DistributionService
         $this->log->record($accountId, $leadId, $pipelineId, $stageId, null, $method, 'queued');
         $this->logger->info('Lead queued (nobody available now)', ['lead_id' => $leadId, 'why' => $why]);
         return true;
+    }
+
+    private function isInactiveUserError(\Throwable $e): bool
+    {
+        if (str_contains($e->getMessage(), 'NotSupportedChoice')) {
+            return true;
+        }
+        $prev = $e->getPrevious();
+        if ($prev instanceof \GuzzleHttp\Exception\RequestException && $prev->hasResponse()) {
+            $body = (string) $prev->getResponse()->getBody();
+            return str_contains($body, 'NotSupportedChoice') && str_contains($body, 'responsible_user_id');
+        }
+        return false;
     }
 
     // ── Rule matching ─────────────────────────────────────────────────────────

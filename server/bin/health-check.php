@@ -65,8 +65,30 @@ foreach ($alerts as [$acc, $name, $p]) {
 }
 foreach ($st as $k => $t) if ($t < $ts - 86400) unset($st[$k]);
 file_put_contents($stF, json_encode($st));
+// ── Клиенты: установки, застрявшие, отключения (05.11.2026) ──────────────
+$reg = new DealDist\Accounts\AccountRegistry();
+$onb = ['new' => [], 'stuck' => [], 'gone' => []];
+foreach ($reg->all() as $acc => $rec) {
+    if (DealDist\Accounts\AccountRegistry::isInternal((string) $acc, $rec)) continue;
+    $stg  = $reg->stage((string) $acc, $rec);
+    $who  = (($rec['name'] ?? '') ?: ($rec['domain'] ?? $acc)) . (!empty($rec['installer']['email']) ? ' · ' . $rec['installer']['email'] : '');
+    $inst = (int) ($rec['installed_at'] ?? 0);
+    if ($inst > $ts - 86400 && empty($rec['backfilled'])) $onb['new'][] = $who;
+    if ($stg['stuck']) {
+        $why = ['installed' => 'не открывал виджет', 'opened' => 'открыл, но нет правил', 'rules' => 'правила есть, распределений нет'][$stg['stage']] ?? $stg['stage'];
+        $onb['stuck'][] = $who . ' — ' . $why . ', ' . (int) floor(($ts - $inst) / 86400) . ' дн.';
+        $k = md5($acc . '|stuck|' . $stg['stage']);
+        if (($st[$k] ?? 0) < $ts - 3 * 86400) { tg("⏳ <b>Клиент застрял</b>\n" . htmlspecialchars($who) . "\n" . $why); $st[$k] = $ts; }
+    }
+    $gone = max((int) ($rec['uninstalled_at'] ?? 0), (int) ($rec['revoked_at'] ?? 0));
+    if ($gone > $ts - 86400) $onb['gone'][] = $who;
+}
+file_put_contents($stF, json_encode($st));
 if ($mode === '--report') {
     $lines = ["📊 <b>Распределение — " . $now->format('d.m') . "</b>"];
+    if ($onb['new'])   $lines[] = "🆕 Новые установки: " . htmlspecialchars(implode('; ', $onb['new']));
+    if ($onb['stuck']) $lines[] = "⏳ Застряли:\n• " . htmlspecialchars(implode("\n• ", $onb['stuck']));
+    if ($onb['gone'])  $lines[] = "🔻 Отключили: " . htmlspecialchars(implode('; ', $onb['gone']));
     foreach ($report as $r) {
         $a = ($r['cnt']['assigned'] ?? 0) + ($r['cnt']['history_match'] ?? 0);
         $q = $r['cnt']['queued'] ?? 0; $s = ($r['cnt']['skipped_schedule'] ?? 0) + ($r['cnt']['skipped_offline'] ?? 0);

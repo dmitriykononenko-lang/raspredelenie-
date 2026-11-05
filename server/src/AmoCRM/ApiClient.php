@@ -76,15 +76,24 @@ class ApiClient
 
     private function refreshTokens(string $accountId, array $tokens): array
     {
-        $response = $this->http->post('https://' . $tokens['base_domain'] . '/oauth2/access_token', [
-            'json' => [
-                'client_id'     => $_ENV['AMO_CLIENT_ID'],
-                'client_secret' => $_ENV['AMO_CLIENT_SECRET'],
-                'grant_type'    => 'refresh_token',
-                'refresh_token' => $tokens['refresh_token'],
-                'redirect_uri'  => $_ENV['AMO_REDIRECT_URI'],
-            ],
-        ]);
+        try {
+            $response = $this->http->post('https://' . $tokens['base_domain'] . '/oauth2/access_token', [
+                'json' => [
+                    'client_id'     => $_ENV['AMO_CLIENT_ID'],
+                    'client_secret' => $_ENV['AMO_CLIENT_SECRET'],
+                    'grant_type'    => 'refresh_token',
+                    'refresh_token' => $tokens['refresh_token'],
+                    'redirect_uri'  => $_ENV['AMO_REDIRECT_URI'],
+                ],
+            ]);
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            // Клиент удалил виджет / отозвал доступ — отмечаем в карточке аккаунта.
+            $body = $e->hasResponse() ? (string) $e->getResponse()->getBody() : '';
+            if (stripos($body, 'revoked') !== false) {
+                try { (new \DealDist\Accounts\AccountRegistry())->markRevoked($accountId); } catch (\Throwable $t) {}
+            }
+            throw $e;
+        }
 
         $new = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR);
         $this->saveTokens($accountId, $tokens['base_domain'], $new);
@@ -153,6 +162,50 @@ class ApiClient
 
         $body = (string) $response->getBody();
         return $body ? json_decode($body, true, 512, JSON_THROW_ON_ERROR) : [];
+    }
+
+    /** Произвольный запрос к API v4 аккаунта (карточка клиента, сделки вендора). */
+    public function api(string $accountId, string $method, string $path, array $options = []): array
+    {
+        return $this->request($accountId, $method, $path, $options);
+    }
+
+    /**
+     * id активных пользователей аккаунта (кэш 10 минут). null — не удалось узнать,
+     * тогда фильтр по активности не применяется (распределение не должно вставать).
+     * @return list<int>|null
+     */
+    public function getActiveUserIds(string $accountId): ?array
+    {
+        $file = $this->storagePath . '/cache/active_users_' . preg_replace('/[^0-9]/', '', $accountId) . '.json';
+        if (is_file($file) && time() - filemtime($file) < 600) {
+            $d = json_decode((string) file_get_contents($file), true);
+            if (is_array($d) && $d) {
+                return array_map('intval', $d);
+            }
+        }
+        try {
+            $ids = [];
+            foreach ($this->getUsers($accountId) as $u) {
+                if (!empty($u['active'])) {
+                    $ids[] = (int) $u['id'];
+                }
+            }
+            if (!$ids) {
+                return null;
+            }
+            @mkdir(dirname($file), 0775, true);
+            @file_put_contents($file, json_encode($ids));
+            return $ids;
+        } catch (\Throwable $e) {
+            $this->logger->warning('getActiveUserIds failed — no activity filter', ['account_id' => $accountId, 'error' => mb_substr($e->getMessage(), 0, 200)]);
+            return null;
+        }
+    }
+
+    public function forgetActiveUsers(string $accountId): void
+    {
+        @unlink($this->storagePath . '/cache/active_users_' . preg_replace('/[^0-9]/', '', $accountId) . '.json');
     }
 
     // ── Lead ──────────────────────────────────────────────────────────────────

@@ -130,7 +130,23 @@ class AdminController
 
             $health = $this->health((string) $acc, $rules, is_array($statuses) ? $statuses : [], $subscriptions['raspredelenie'] ?? []);
 
+            $reg    = new \DealDist\Accounts\AccountRegistry();
+            $client = $reg->get((string) $acc);
+            $clientInfo = [
+                'name'          => $client['name'] ?? null,
+                'country'       => $client['country'] ?? null,
+                'users_active'  => $client['users_active'] ?? null,
+                'installer'     => $client['installer'] ?? null,
+                'installed_at'  => $client['installed_at'] ?? null,
+                'first_opened_at' => $client['first_opened_at'] ?? null,
+                'last_seen_at'  => $client['last_seen_at'] ?? null,
+                'uninstalled_at'=> $client['uninstalled_at'] ?? ($client['revoked_at'] ?? null),
+                'vendor_lead_id'=> $client['vendor_lead_id'] ?? null,
+                'internal'      => \DealDist\Accounts\AccountRegistry::isInternal((string) $acc, $client + ['domain' => $domain]),
+            ] + $reg->stage((string) $acc, $client);
+
             $accounts[] = [
+                'client'        => $clientInfo,
                 'health'        => $health,
                 'account_id'    => (string) $acc,
                 'domain'        => $domain,

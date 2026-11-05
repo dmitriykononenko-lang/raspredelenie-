@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace DealDist\App;
 
 use DealDist\Http\Middleware\AuthMiddleware;
+use DealDist\Http\Middleware\ActivityMiddleware;
 use DealDist\Http\Middleware\CorsMiddleware;
 use DealDist\Http\Middleware\JsonMiddleware;
 use DealDist\Http\Controller\DistributeController;
@@ -53,6 +54,7 @@ class AppFactory
         $app = SlimAppFactory::create();
         // Детали ошибок (трассировка) — только при APP_DEBUG=1; в проде отдаём краткую страницу (замечание модерации amoCRM).
         $app->addErrorMiddleware((bool) ($_ENV['APP_DEBUG'] ?? false), true, true);
+        $app->add(new ActivityMiddleware());
         $app->add(new JsonMiddleware());
         $app->add(new CorsMiddleware());
         $app->add(new AuthMiddleware());
@@ -130,6 +132,8 @@ class AppFactory
         $app->post('/webhook/leads',                    WebhookController::class    . ':handle');
 
         $app->get('/oauth/callback',                    OAuthController::class      . ':callback');
+        // Хук отключения интеграции (URL в кабинете amoCRM/Kommo)
+        $app->map(['GET', 'POST'], '/webhook/uninstall', OAuthController::class . ':uninstall');
 
         // Admin panel (KO:AGENCY)
         $app->get('/admin', AdminController::class . ':page');

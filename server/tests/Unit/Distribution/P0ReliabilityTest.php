@@ -116,6 +116,8 @@ final class P0ReliabilityTest extends TestCase
         $hist = [];
         $api  = $this->apiWith([
             new Response(200, [], json_encode(['id' => 5, 'status_id' => 10, 'pipeline_id' => 1])),
+            // 05.11.2026: перед назначением сервис берёт список активных пользователей
+            new Response(200, [], json_encode(['_embedded' => ['users' => [['id' => 1, 'rights' => ['is_active' => true]], ['id' => 2, 'rights' => ['is_active' => true]]]]])),
             new Response(503), new Response(503), new Response(503),
         ], $hist);
         $svc = $this->service($api);

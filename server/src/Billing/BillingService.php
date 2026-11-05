@@ -112,6 +112,18 @@ final class BillingService
             return ['ok' => false, 'status' => 400, 'error' => $q['error'], 'available_plans' => $q['available_plans'] ?? []];
         }
 
+        // Двойной клик / повторно навешенный обработчик в виджете: тот же счёт
+        // в течение 10 минут возвращаем повторно, второй платёж не создаём.
+        foreach (glob($this->storage . '/payments/*.json') ?: [] as $f) {
+            $rec = json_decode((string) @file_get_contents($f), true);
+            if (!is_array($rec) || ($rec['status'] ?? '') !== 'pending' || !empty($rec['applied'])) continue;
+            if ((string) ($rec['account_id'] ?? '') !== $account || (int) ($rec['plan_id'] ?? 0) !== $planId) continue;
+            if ((int) ($rec['users'] ?? 0) !== (int) $q['billed_users'] || time() - (int) ($rec['ts'] ?? 0) > 600) continue;
+            if (!empty($rec['confirmation_url'])) {
+                return ['ok' => true, 'status' => 200, 'confirmation_url' => $rec['confirmation_url'], 'payment_id' => basename($f, '.json'), 'reused' => true];
+            }
+        }
+
         $yk = new YooKassaClient();
         if (!$yk->enabled()) {
             return ['ok' => false, 'status' => 503, 'error' => 'yookassa_not_configured', 'detail' => 'set YOOKASSA_SHOP_ID/SECRET_KEY'];
@@ -168,6 +180,7 @@ final class BillingService
         $this->savePayment($pid, [
             'account_id' => $account, 'widget' => self::WIDGET, 'months' => $months, 'plan_id' => $planId,
             'users' => $billed, 'amount' => $sum, 'status' => 'pending', 'source' => $source, 'ts' => time(),
+            'confirmation_url' => $url,
         ]);
 
         return [
