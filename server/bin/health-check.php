@@ -31,6 +31,9 @@ $report = []; $alerts = [];
 foreach (glob("$S/settings/*.json") as $f) {
     if (!preg_match('~/(\d+)\.json$~', $f, $m)) continue;
     $acc = $m[1]; $name = $names[$acc] ?? $acc;
+    $regRec = (new DealDist\Accounts\AccountRegistry())->get($acc);
+    if (!empty($regRec['uninstalled_at']) || !empty($regRec['revoked_at'])) continue;   // виджет удалён — не алертим
+    if (!empty($regRec['name']) && !isset($names[$acc])) $name = $regRec['name'];
     $set = rj($f); $rules = $set['rules'] ?? [];
     $tok = rj("$S/tokens/$acc.json");
     $log = []; $lf = "$S/logs/$acc.ndjson";

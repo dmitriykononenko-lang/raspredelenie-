@@ -109,8 +109,8 @@ final class VendorNotifier
         }
         $pipeline = (int) ($_ENV['VENDOR_PIPELINE_ID'] ?? 11130042);
         $status   = (int) ($_ENV['VENDOR_STATUS_INSTALLED'] ?? 87378418);
-        $fAcc     = (int) ($_ENV['VENDOR_FIELD_ACCOUNT_ID'] ?? 1173679);
-        $fLink    = (int) ($_ENV['VENDOR_FIELD_LINK'] ?? 1195091);
+        $fAcc     = (int) ($_ENV['VENDOR_FIELD_ACCOUNT_ID'] ?? 0);   // поля воронки «Дублей» другого типа — по умолчанию не заполняем
+        $fLink    = (int) ($_ENV['VENDOR_FIELD_LINK'] ?? 0);
         $inst     = $rec['installer'] ?? [];
 
         $contact = ['name' => (($inst['name'] ?? '') ?: 'Админ') . ' · ' . (($rec['name'] ?? '') ?: ($rec['domain'] ?? $accountId))];
@@ -123,16 +123,17 @@ final class VendorNotifier
             'status_id'   => $status,
             '_embedded'   => ['tags' => [['name' => 'Распределение']], 'contacts' => [$contact]],
         ];
-        $withFields = $lead;
-        $withFields['custom_fields_values'] = [
-            ['field_id' => $fAcc,  'values' => [['value' => (string) $accountId]]],
-            ['field_id' => $fLink, 'values' => [['value' => 'https://' . ($rec['domain'] ?? '')]]],
-        ];
-        try {
-            $res = $this->api->api($this->vendorAccount(), 'POST', '/leads/complex', ['json' => [$withFields]]);
-        } catch (\Throwable $e) {
-            // поля могут быть другого типа — создаём без них, данные всё равно уйдут в примечание
-            $this->logger->warning('Vendor lead with fields failed, retrying without', ['error' => mb_substr($e->getMessage(), 0, 200)]);
+        $fields = [];
+        if ($fAcc > 0)  { $fields[] = ['field_id' => $fAcc,  'values' => [['value' => (string) $accountId]]]; }
+        if ($fLink > 0) { $fields[] = ['field_id' => $fLink, 'values' => [['value' => 'https://' . ($rec['domain'] ?? '')]]]; }
+        if ($fields) {
+            try {
+                $res = $this->api->api($this->vendorAccount(), 'POST', '/leads/complex', ['json' => [$lead + ['custom_fields_values' => $fields]]]);
+            } catch (\Throwable $e) {
+                $this->logger->warning('Vendor lead with fields failed, retrying without', ['error' => mb_substr($e->getMessage(), 0, 200)]);
+                $res = $this->api->api($this->vendorAccount(), 'POST', '/leads/complex', ['json' => [$lead]]);
+            }
+        } else {
             $res = $this->api->api($this->vendorAccount(), 'POST', '/leads/complex', ['json' => [$lead]]);
         }
         $leadId = (int) ($res[0]['id'] ?? 0);

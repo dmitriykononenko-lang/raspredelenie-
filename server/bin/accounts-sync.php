@@ -33,6 +33,9 @@ foreach (glob("$S/tokens/*.json") ?: [] as $f) {
     $tok = json_decode((string) file_get_contents($f), true) ?: [];
     $rec = $registry->get($acc);
 
+    if (empty($rec['domain']) && !empty($tok['base_domain']) && !$dry) {
+        $rec = $registry->save($acc, ['domain' => (string) $tok['base_domain']]);
+    }
     $fresh = !empty($rec['profile_at']) && time() - (int) $rec['profile_at'] < 20 * 3600;
     if (!$fresh && empty($rec['revoked_at']) && empty($rec['uninstalled_at'])) {
         $patch = ['domain' => (string) ($tok['base_domain'] ?? ($rec['domain'] ?? ''))];
