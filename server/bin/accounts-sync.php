@@ -16,6 +16,8 @@ use DealDist\AmoCRM\ApiClient;
 
 $dry      = in_array('--dry-run', $argv, true);
 $noVendor = in_array('--no-vendor', $argv, true);
+$only     = [];
+foreach ($argv as $a) { if (str_starts_with($a, '--only=')) $only = array_filter(explode(',', substr($a, 7))); }
 $S        = rtrim($_ENV['STORAGE_PATH'] ?? getenv('STORAGE_PATH') ?: '/storage', '/');
 
 $logger = new Monolog\Logger('accounts-sync');
@@ -27,6 +29,7 @@ $notifier = new VendorNotifier($api, $logger, $registry);
 foreach (glob("$S/tokens/*.json") ?: [] as $f) {
     $acc = basename($f, '.json');
     if (!preg_match('/^\d+$/', $acc) || $acc === '0') continue;
+    if ($only && !in_array($acc, $only, true)) continue;
     $tok = json_decode((string) file_get_contents($f), true) ?: [];
     $rec = $registry->get($acc);
 
@@ -55,7 +58,8 @@ foreach (glob("$S/tokens/*.json") ?: [] as $f) {
         $acc, $rec['domain'] ?? '?', mb_substr((string) ($rec['name'] ?? ''), 0, 28), $rec['users_active'] ?? '-',
         $st['stage'], $internal ? ' [internal]' : '', !empty($rec['profile_error']) ? ' ERR: ' . mb_substr($rec['profile_error'], 0, 60) : '');
 
-    if (!$dry && !$noVendor && !$internal && empty($rec['vendor_lead_id']) && $st['stage'] !== 'uninstalled' && !empty($rec['name'])) {
+    if (!$dry && !$noVendor && !$internal && empty($rec['vendor_lead_id']) && $st['stage'] !== 'uninstalled' && !empty($rec['name'])
+        && (empty($rec['backfilled']) || in_array($st['stage'], ['installed', 'opened', 'rules'], true))) {
         $notifier->installed($acc, $rec);
         $rec = $registry->get($acc);
         echo "          → сделка в koagency: " . ($rec['vendor_lead_id'] ?? 'не создана') . "\n";
