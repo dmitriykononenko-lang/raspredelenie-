@@ -6,6 +6,7 @@ namespace DealDist\App;
 
 use DealDist\Http\Middleware\AuthMiddleware;
 use DealDist\Http\Middleware\ActivityMiddleware;
+use DealDist\Http\Middleware\AmoJwtMiddleware;
 use DealDist\Http\Middleware\CorsMiddleware;
 use DealDist\Http\Middleware\JsonMiddleware;
 use DealDist\Http\Controller\DistributeController;
@@ -56,6 +57,7 @@ class AppFactory
         $app->addErrorMiddleware((bool) ($_ENV['APP_DEBUG'] ?? false), true, true);
         $app->add(new ActivityMiddleware());
         $app->add(new JsonMiddleware());
+        $app->add(new AmoJwtMiddleware());   // 1.3.21: X-Auth-Token от $authorizedAjax (внутри CORS, до Activity)
         $app->add(new CorsMiddleware());
         $app->add(new AuthMiddleware());
 
