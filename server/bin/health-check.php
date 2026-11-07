@@ -30,6 +30,7 @@ if ($mode === '--test') { tg("✅ Распределение: мониторин
 $sched  = new DealDist\Distribution\ScheduleChecker();
 $status = new DealDist\Distribution\StatusStorage();
 $report = []; $alerts = [];
+$stF = "$S/alerts/state.json"; @mkdir("$S/alerts", 0775, true); $st = rj($stF);
 foreach (glob("$S/settings/*.json") as $f) {
     if (!preg_match('~/(\d+)\.json$~', $f, $m)) continue;
     $acc = $m[1]; $name = $names[$acc] ?? $acc;
@@ -56,13 +57,19 @@ foreach (glob("$S/settings/*.json") as $f) {
     if ($rules && $mgr && $online === 0) $probs[] = 'все менеджеры выключены';
     $h = (int) $now->format('G');
     if ($rules && $lastTs && $ts - $lastTs > 6 * 3600 && $h >= 10 && $h <= 20 && $acc !== '33258634') $probs[] = 'нет событий > 6 ч в рабочее время';
-    if ($oldestWait && $onShift > 0 && $ts - $oldestWait > 30 * 60) $probs[] = 'очередь не раздана: ' . count($waiting) . ' сделок, есть менеджер на смене';
+    // Ночная очередь раздаётся в первые минуты смены, поэтому возраст сделки в очереди сам по себе ничего не говорит.
+    // Тревога, только если очередь стоит при менеджере на смене две проверки подряд (>= 14 мин). 07.11.2026
+    $qk = 'qstuck|' . $acc;
+    if ($oldestWait && $onShift > 0 && $ts - $oldestWait > 30 * 60) {
+        if (empty($st[$qk])) $st[$qk] = $ts;
+        if ($ts - $st[$qk] >= 14 * 60) $probs[] = 'очередь не раздана: ' . count($waiting) . ' сделок, есть менеджер на смене';
+    } else unset($st[$qk]);
     if ($oldestWait && $ts - $oldestWait > 24 * 3600) $probs[] = 'в очереди > 24 ч: ' . count($waiting);
     foreach (array_slice(array_reverse($log), 0, 30) as $e) { if (str_contains((string) ($e['reason'] ?? ''), 'error')) { $probs[] = 'ошибки в логе'; break; } }
     $report[] = ['acc' => $acc, 'name' => $name, 'cnt' => $cnt, 'waiting' => count($waiting), 'online' => $online, 'onShift' => $onShift, 'mgr' => count($mgr), 'probs' => $probs, 'last' => $lastTs];
     foreach ($probs as $p) $alerts[] = [$acc, $name, $p];
 }
-$stF = "$S/alerts/state.json"; @mkdir("$S/alerts", 0775, true); $st = rj($stF); $sent = 0;
+$sent = 0;
 foreach ($alerts as [$acc, $name, $p]) {
     $k = md5($acc . '|' . $p);
     if (($st[$k] ?? 0) > $ts - 6 * 3600) continue;
